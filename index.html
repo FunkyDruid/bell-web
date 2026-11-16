@@ -924,7 +924,7 @@ async function initMidi() {
       text.textContent = ins.length ? ins.map((i) => i.name).join(", ") : "No MIDI keyboard connected";
     };
     access.onstatechange = update; update();
-  } catch { text.textContent = "MIDI blocked here"; }
+  } catch { text.textContent = window.self !== window.top ? "MIDI blocked in this frame" : "MIDI not allowed: check site settings"; }
 }
 function onMidi({ data }) {
   const [st, d1, d2 = 0] = data, cmd = st & 0xf0;
