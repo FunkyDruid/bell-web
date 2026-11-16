@@ -34,6 +34,7 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 14px;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -117,6 +118,22 @@ select { background: var(--paper); border: 1.5px solid var(--ink); border-radius
 .tip strong { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
 .tip .hl { display: grid; grid-template-columns: 52px 1fr; gap: 6px; }
 .tip .hl span:first-child { font-family: var(--font-data); font-size: 11px; opacity: 0.7; padding-top: 1px; }
+.menu-wrap { position: relative; }
+.menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; background: var(--paper); border: 1.5px solid var(--ink); min-width: 230px; display: grid; padding: 4px 0; }
+.menu button { text-align: left; background: none; border: 0; padding: 8px 14px; font-size: 13.5px; cursor: pointer; color: var(--ink); }
+.menu button:hover, .menu button:focus-visible { background: var(--ink); color: var(--paper); outline: none; }
+.menu button:disabled { color: var(--muted); background: none; cursor: default; }
+.menu hr { border: 0; border-top: 1px solid var(--rule); margin: 4px 0; }
+.sheet-back { position: fixed; inset: 0; z-index: 60; background: color-mix(in srgb, var(--ink) 35%, transparent); display: grid; place-items: center; padding: 16px; }
+.sheet { background: var(--paper); border: 1.5px solid var(--ink); border-top: 4px solid var(--ochre); width: min(520px, 100%); padding: 16px; display: grid; gap: 12px; }
+.sheet h2 { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: 0.04em; }
+.sheet p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.sheet input, .sheet textarea { font: inherit; color: var(--ink); background: var(--knob); border: 1.5px solid var(--ink); padding: 8px 10px; width: 100%; border-radius: 0; }
+.sheet textarea { font-family: var(--font-data); font-size: 12px; min-height: 180px; resize: vertical; }
+.sheet .actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.sheet .err { color: var(--red); font-size: 13px; }
+.btn.primary { background: var(--ink); color: var(--paper); }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 70; background: var(--ink); color: var(--paper); padding: 9px 14px; font-weight: 600; font-size: 13px; }
 footer { font-size: 12.5px; color: var(--muted); max-width: 70ch; line-height: 1.5; }
 
 @media (max-width: 960px) {
@@ -134,16 +151,34 @@ footer { font-size: 12.5px; color: var(--muted); max-width: 70ch; line-height: 1
 </style>
 
 <div class="tip" id="tip" role="tooltip" hidden></div>
+<div class="sheet-back" id="sheetBack" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"></div></div>
+<div class="toast" id="toast" role="status" hidden></div>
 <div class="wrap">
   <header>
     <div class="mark" aria-label="Bell">BELL<i></i></div>
-    <label class="field grow"><span>Preset</span>
+    <div class="field grow"><span>Preset</span>
       <div class="row">
         <select id="preset" aria-label="Preset"></select>
         <button class="btn" id="prev" aria-label="Previous preset">&lt;</button>
         <button class="btn" id="next" aria-label="Next preset">&gt;</button>
+        <button class="btn" id="savePreset">Save</button>
+        <div class="menu-wrap">
+          <button class="btn" id="moreBtn" aria-haspopup="true" aria-expanded="false" aria-label="More preset actions">&middot;&middot;&middot;</button>
+          <div class="menu" id="menu" role="menu" hidden>
+            <button role="menuitem" data-act="saveAs">Save as new preset&hellip;</button>
+            <button role="menuitem" data-act="delete" id="menuDelete">Delete this preset</button>
+            <hr>
+            <button role="menuitem" data-act="copy">Copy preset as JSON</button>
+            <button role="menuitem" data-act="paste">Paste preset JSON&hellip;</button>
+            <button role="menuitem" data-act="link" id="menuLink">Copy share link</button>
+            <hr>
+            <button role="menuitem" data-act="export" id="menuExport">Export to file</button>
+            <button role="menuitem" data-act="import">Import from file&hellip;</button>
+          </div>
+          <input type="file" id="importFile" accept=".json,.bellpreset,application/json" hidden>
+        </div>
       </div>
-    </label>
+    </div>
     <label class="field"><span>Instrument</span><select id="model" aria-label="Instrument"></select></label>
     <div class="spacer"></div>
     <div class="row">
@@ -430,15 +465,177 @@ function setValue(id, v, { silent = false } = {}) {
   if (id === "outGain" || id === "limiter") applyOut();
 }
 
-function applyPreset(i) {
-  i = (i + PRESETS.length) % PRESETS.length;
-  const [name, over] = PRESETS[i];
-  for (const p of PARAMS) setValue(p.id, over[p.id] ?? p.def, { silent: true });
+// Presets: factory ones are fixed; yours live in this browser. Both share one JSON format with the plugin:
+// { "format": "bell-preset", "version": 1, "name": "...", "params": { "<paramId>": realValue, ... } }
+let userPresets = store.get("user", []).filter((u) => u && typeof u.name === "string" && u.params);
+let current = { key: "f:0", name: PRESETS[0][0] };
+const allPresets = () => [...PRESETS.map(([name, params], i) => ({ key: "f:" + i, name, params, factory: true })),
+                         ...userPresets.map((u, i) => ({ key: "u:" + i, name: u.name, params: u.params, factory: false }))];
+
+function applyParams(over) {
+  for (const p of PARAMS) setValue(p.id, typeof over[p.id] === "number" ? over[p.id] : p.def, { silent: true });
   for (const p of PARAMS) refreshControl(p.id);
-  $("#preset").value = String(i);
-  store.set("preset", i);
-  return name;
 }
+function fillPresetSelect() {
+  const sel = $("#preset");
+  sel.innerHTML = "";
+  const groups = [["Factory", allPresets().filter((x) => x.factory)], ["Yours", allPresets().filter((x) => !x.factory)]];
+  for (const [label, list] of groups) {
+    if (!list.length) continue;
+    const g = document.createElement("optgroup"); g.label = label;
+    for (const x of list) g.append(new Option(x.name, x.key));
+    sel.append(g);
+  }
+  sel.value = current.key;
+  $("#menuDelete").disabled = !current.key.startsWith("u:");
+}
+function loadPreset(key) {
+  const x = allPresets().find((p) => p.key === key) || allPresets()[0];
+  applyParams(x.params);
+  current = { key: x.key, name: x.name };
+  fillPresetSelect();
+  store.set("presetKey", x.key);
+}
+function stepPreset(d) {
+  const list = allPresets(), i = list.findIndex((p) => p.key === current.key);
+  loadPreset(list[(i + d + list.length) % list.length].key);
+}
+function applyPreset(i) { loadPreset("f:" + ((i + PRESETS.length) % PRESETS.length)); }   // MIDI program change
+
+function snapshot() {
+  const params = {};
+  for (const p of PARAMS) params[p.id] = Math.round(values[p.id] * 10000) / 10000;
+  return params;
+}
+const presetJson = (name, params = snapshot()) => JSON.stringify({ format: "bell-preset", version: 1, name, params }, null, 2);
+function saveUserPreset(name, params = snapshot()) {
+  name = name.trim().slice(0, 60);
+  if (!name) return false;
+  const i = userPresets.findIndex((u) => u.name.toLowerCase() === name.toLowerCase());
+  if (i >= 0) userPresets[i] = { name, params }; else userPresets.push({ name, params });
+  userPresets.sort((a, b) => a.name.localeCompare(b.name));
+  store.set("user", userPresets);
+  current = { key: "u:" + userPresets.findIndex((u) => u.name === name), name };
+  fillPresetSelect();
+  store.set("presetKey", current.key);
+  return true;
+}
+// Accepts the plugin's and the page's preset JSON. Returns {name, params} or throws a readable error.
+function parsePreset(text) {
+  let o;
+  try { o = JSON.parse(text); } catch { throw new Error("That isn't valid JSON. Paste the whole preset, from { to }."); }
+  if (!o || typeof o !== "object" || !o.params || typeof o.params !== "object") throw new Error("No \"params\" found. This doesn't look like a Bell preset.");
+  const params = {};
+  let known = 0;
+  for (const [k, v] of Object.entries(o.params)) if (SPEC[k] && typeof v === "number" && isFinite(v)) { params[k] = v; known++; }
+  if (!known) throw new Error("None of the settings in it are Bell parameters.");
+  return { name: (typeof o.name === "string" && o.name.trim()) || "Imported preset", params };
+}
+function importPreset(text) {
+  const { name, params } = parsePreset(text);
+  applyParams(params);
+  const snap = JSON.stringify(snapshot());
+  const same = userPresets.findIndex((u) => u.name.toLowerCase() === name.toLowerCase());
+  if (same >= 0 && JSON.stringify(userPresets[same].params) === snap) { loadPreset("u:" + same); toast(`"${name}" is already in your presets`); return; }
+  saveUserPreset(uniqueName(name), snapshot());
+  toast(`Added "${current.name}" to your presets`);
+}
+function uniqueName(name) {
+  if (!userPresets.some((u) => u.name.toLowerCase() === name.toLowerCase())) return name;
+  for (let i = 2; ; i++) { const n = `${name} ${i}`; if (!userPresets.some((u) => u.name.toLowerCase() === n.toLowerCase())) return n; }
+}
+
+// small UI helpers: toast, sheet, menu
+let toastTimer = 0;
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 2200);
+}
+const escHtml = (x) => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+function openSheet(html, onReady) {
+  $("#sheet").innerHTML = html; $("#sheetBack").hidden = false;
+  onReady?.($("#sheet"));
+  ($("#sheet").querySelector("input, textarea, .primary") || $("#sheet")).focus();
+}
+const closeSheet = () => { $("#sheetBack").hidden = true; $("#sheet").innerHTML = ""; };
+$("#sheetBack").addEventListener("pointerdown", (e) => { if (e.target.id === "sheetBack") closeSheet(); });
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeSheet(); closeMenu(); } });
+
+async function copyText(text, okMsg, title) {
+  try { await navigator.clipboard.writeText(text); toast(okMsg); }
+  catch {
+    openSheet(`<h2 id="sheetTitle">${escHtml(title)}</h2><p>Copying isn't allowed here. Select the text and copy it yourself.</p>
+      <textarea id="sheetText" readonly>${escHtml(text)}</textarea><div class="actions"><button class="btn primary" data-close>Done</button></div>`,
+      (sh) => { $("[data-close]", sh).onclick = closeSheet; const t = $("#sheetText", sh); t.focus(); t.select(); });
+  }
+}
+function askSave(prefill, title = "Save preset") {
+  openSheet(`<h2 id="sheetTitle">${escHtml(title)}</h2><p>Saved in this browser. Same name replaces the old one.</p>
+    <input id="sheetName" maxlength="60" value="${escHtml(prefill)}" aria-label="Preset name">
+    <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn primary" data-ok>Save</button></div>`, (sh) => {
+    const go = () => { const n = $("#sheetName", sh).value; if (saveUserPreset(n)) { closeSheet(); toast(`Saved "${current.name}"`); } };
+    $("[data-close]", sh).onclick = closeSheet; $("[data-ok]", sh).onclick = go;
+    $("#sheetName", sh).addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+    $("#sheetName", sh).select();
+  });
+}
+const framed = window.self !== window.top;
+if (framed) { $("#menuLink").hidden = true; $("#menuExport").hidden = true; }   // claude.ai frames block downloads and link hashes
+
+const actions = {
+  saveAs: () => askSave(current.key.startsWith("u:") ? current.name + " 2" : current.name + " (mine)", "Save as new preset"),
+  delete: () => {
+    if (!current.key.startsWith("u:")) return;
+    openSheet(`<h2 id="sheetTitle">Delete "${escHtml(current.name)}"?</h2><p>This removes it from this browser. Copy it first if you want to keep it somewhere.</p>
+      <div class="actions"><button class="btn" data-close>Keep it</button><button class="btn primary" data-ok>Delete</button></div>`, (sh) => {
+      $("[data-close]", sh).onclick = closeSheet;
+      $("[data-ok]", sh).onclick = () => {
+        const name = current.name;
+        userPresets.splice(+current.key.slice(2), 1); store.set("user", userPresets);
+        closeSheet(); loadPreset("f:0"); toast(`Deleted "${name}"`);
+      };
+    });
+  },
+  copy: () => copyText(presetJson(current.name), "Preset JSON copied", "Preset JSON"),
+  paste: () => openSheet(`<h2 id="sheetTitle">Paste a preset</h2><p>Paste JSON from the Bell plugin or from someone's copy. It is added to your presets.</p>
+      <textarea id="sheetText" placeholder='{ "format": "bell-preset", "name": "...", "params": { ... } }' aria-label="Preset JSON"></textarea>
+      <div class="err" id="sheetErr" hidden></div>
+      <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn primary" data-ok>Add preset</button></div>`, (sh) => {
+      $("[data-close]", sh).onclick = closeSheet;
+      $("[data-ok]", sh).onclick = () => {
+        try { importPreset($("#sheetText", sh).value); closeSheet(); }
+        catch (e) { const er = $("#sheetErr", sh); er.textContent = e.message; er.hidden = false; }
+      };
+    }),
+  link: () => {
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify({ format: "bell-preset", version: 1, name: current.name, params: snapshot() }))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    copyText(location.origin + location.pathname + "#preset=" + b64, "Share link copied", "Share link");
+  },
+  export: () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([presetJson(current.name)], { type: "application/json" }));
+    a.download = current.name.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") + ".bellpreset";
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  },
+  import: () => $("#importFile").click(),
+};
+$("#importFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try { importPreset(await f.text()); } catch (err) { toast(err.message); }
+});
+const menu = $("#menu"), moreBtn = $("#moreBtn");
+function closeMenu() { menu.hidden = true; moreBtn.setAttribute("aria-expanded", "false"); }
+moreBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  menu.hidden = !menu.hidden; moreBtn.setAttribute("aria-expanded", String(!menu.hidden));
+  if (!menu.hidden) menu.querySelector("button:not([disabled]):not([hidden])")?.focus();
+});
+menu.addEventListener("click", (e) => { const b = e.target.closest("[data-act]"); if (!b || b.disabled) return; closeMenu(); actions[b.dataset.act](); });
+document.addEventListener("pointerdown", (e) => { if (!menu.hidden && !e.target.closest(".menu-wrap")) closeMenu(); });
+$("#savePreset").addEventListener("click", () => askSave(current.key.startsWith("u:") ? current.name : current.name + " (mine)"));
 
 // ------------------------------------------------------------------ tooltips: what moving each control does
 const TIPS = {
@@ -938,17 +1135,27 @@ function onMidi({ data }) {
 }
 
 // ------------------------------------------------------------------ header wiring
-PRESETS.forEach(([name], i) => $("#preset").add(new Option(name, String(i))));
 MODEL_NAMES.forEach((n, i) => $("#model").add(new Option(n, String(i))));
-$("#preset").addEventListener("change", (e) => { applyPreset(+e.target.value); e.target.blur(); });
-$("#prev").addEventListener("click", () => applyPreset(+$("#preset").value - 1));
-$("#next").addEventListener("click", () => applyPreset(+$("#preset").value + 1));
+$("#preset").addEventListener("change", (e) => { loadPreset(e.target.value); e.target.blur(); });
+$("#prev").addEventListener("click", () => stepPreset(-1));
+$("#next").addEventListener("click", () => stepPreset(1));
 $("#model").addEventListener("change", (e) => { setValue("model", +e.target.value); e.target.blur(); });
 $("#panic").addEventListener("click", () => { for (const s of [...held.keys()]) release(s); send({ type: "panic" }); });
 document.addEventListener("pointerdown", () => start(), { once: true, capture: true });
 document.addEventListener("keydown", () => start(), { once: true, capture: true });
 
-applyPreset(Math.min(PRESETS.length - 1, Math.max(0, store.get("preset", 0) | 0)));
+loadPreset(store.get("presetKey", "f:0"));
+// A shared link carries the preset in the hash: #preset=<base64url JSON>
+function presetFromHash() {
+  if (!location.hash.startsWith("#preset=")) return;
+  try {
+    const b = location.hash.slice(8).replace(/-/g, "+").replace(/_/g, "/");
+    importPreset(decodeURIComponent(escape(atob(b))));
+  } catch (e) { toast("That share link is damaged: " + e.message); }
+  history.replaceState(null, "", location.pathname + location.search);
+}
+presetFromHash();
+window.addEventListener("hashchange", presetFromHash);
 buildKeys();
 drawEq();
 initMidi();
