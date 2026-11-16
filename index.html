@@ -63,6 +63,7 @@ select { background: var(--paper); border: 1.5px solid var(--ink); border-radius
 .chip b { width: 8px; height: 8px; border-radius: 50%; background: var(--rule); display: inline-block; }
 .chip.live { color: var(--ink); border-color: var(--ink); }
 .chip.live b { background: var(--blue); }
+#output { width: 210px; }
 
 /* keyboard */
 .stage { background: var(--panel); border-top: 3px solid var(--ochre); padding: 12px 14px 14px; display: grid; gap: 10px; }
@@ -181,7 +182,8 @@ footer { font-size: 12.5px; color: var(--muted); max-width: 70ch; line-height: 1
     </div>
     <label class="field"><span>Instrument</span><select id="model" aria-label="Instrument"></select></label>
     <div class="spacer"></div>
-    <div class="row">
+    <div class="row" style="align-items: end; flex-wrap: wrap">
+      <label class="field" id="outputField" hidden><span>Output</span><select id="output" aria-label="Audio output device"></select></label>
       <span class="chip" id="midiChip"><b></b><span id="midiText">Checking for MIDI</span></span>
       <span class="chip" id="voiceChip">0 ringing</span>
       <button class="btn" id="panic">Panic</button>
@@ -310,6 +312,7 @@ function send(msg) {
 async function start() {
   if (ctx) { if (ctx.state === "suspended") ctx.resume(); return starting; }
   ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+  applyOutputDevice();
   starting = (async () => {
     await ctx.audioWorklet.addModule("bell-worklet.js");
     engine = new AudioWorkletNode(ctx, "bell-engine", { numberOfInputs: 0, outputChannelCount: [2] });
@@ -1170,6 +1173,43 @@ window.addEventListener("hashchange", presetFromHash);
 buildKeys();
 drawEq();
 initMidi();
+
+// ------------------------------------------------------------------ output device (Chrome / Edge: AudioContext.setSinkId)
+// Lets the page play into a sound card without changing the Mac's system output.
+const outSel = $("#output");
+let wantedSink = store.get("sink", "");
+async function listOutputs() {
+  let devs = [];
+  try { devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audiooutput"); } catch {}
+  const named = devs.some((d) => d.label);
+  outSel.innerHTML = "";
+  outSel.add(new Option("System default", ""));
+  devs.filter((d) => d.deviceId && d.deviceId !== "default").forEach((d, i) => outSel.add(new Option(d.label || `Output ${i + 1}`, d.deviceId)));
+  if (!named && devs.length) outSel.add(new Option("Show device names…", "__names"));
+  outSel.value = [...outSel.options].some((o) => o.value === wantedSink) ? wantedSink : "";
+}
+async function applyOutputDevice() {
+  if (!ctx || typeof ctx.setSinkId !== "function") return;
+  try { await ctx.setSinkId(wantedSink); }
+  catch { wantedSink = ""; store.set("sink", ""); outSel.value = ""; toast("That output isn't available. Using the system default."); try { await ctx.setSinkId(""); } catch {} }
+}
+outSel.addEventListener("change", async () => {
+  if (outSel.value === "__names") {
+    // Browsers only reveal device names after a media permission. We open the mic for an instant and close it.
+    try { (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach((t) => t.stop()); }
+    catch { toast("Without that permission the outputs stay unnamed. They still work."); }
+    await listOutputs(); outSel.blur(); return;
+  }
+  wantedSink = outSel.value; store.set("sink", wantedSink);
+  await applyOutputDevice();
+  toast("Playing through " + outSel.selectedOptions[0].textContent);
+  outSel.blur();
+});
+if (window.AudioContext && typeof AudioContext.prototype.setSinkId === "function" && navigator.mediaDevices?.enumerateDevices && !framed) {
+  $("#outputField").hidden = false;
+  listOutputs();
+  navigator.mediaDevices.addEventListener?.("devicechange", listOutputs);   // plug the interface in, it appears
+}
 </script>
 
 </html>
