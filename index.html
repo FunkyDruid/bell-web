@@ -124,6 +124,7 @@ select { background: var(--paper); border: 1.5px solid var(--ink); border-radius
 .menu button { text-align: left; background: none; border: 0; padding: 8px 14px; font-size: 13.5px; cursor: pointer; color: var(--ink); }
 .menu button:hover, .menu button:focus-visible { background: var(--ink); color: var(--paper); outline: none; }
 .menu button:disabled { color: var(--muted); background: none; cursor: default; }
+.menu .kbd { float: right; font-family: var(--font-data); font-size: 11px; opacity: 0.6; margin-left: 18px; }
 .menu hr { border: 0; border-top: 1px solid var(--rule); margin: 4px 0; }
 .sheet-back { position: fixed; inset: 0; z-index: 60; background: color-mix(in srgb, var(--ink) 35%, transparent); display: grid; place-items: center; padding: 16px; }
 .sheet { background: var(--paper); border: 1.5px solid var(--ink); border-top: 4px solid var(--ochre); width: min(520px, 100%); padding: 16px; display: grid; gap: 12px; }
@@ -166,6 +167,9 @@ footer { font-size: 12.5px; color: var(--muted); max-width: 70ch; line-height: 1
         <div class="menu-wrap">
           <button class="btn" id="moreBtn" aria-haspopup="true" aria-expanded="false" aria-label="More preset actions">&middot;&middot;&middot;</button>
           <div class="menu" id="menu" role="menu" hidden>
+            <button role="menuitem" data-act="undo" id="menuUndo">Undo <span class="kbd" data-k="undo"></span></button>
+            <button role="menuitem" data-act="redo" id="menuRedo">Redo <span class="kbd" data-k="redo"></span></button>
+            <hr>
             <button role="menuitem" data-act="saveAs">Save as new preset&hellip;</button>
             <button role="menuitem" data-act="delete" id="menuDelete">Delete this preset</button>
             <hr>
@@ -288,6 +292,19 @@ const PRESETS = [
   ["Celesta", { model: 4, hardness: 0.3, velToHardness: 0.4, ringMode: 1, release: 0.35, rvMix: 0.28, rvDecay: 2.2 }],
   ["Crotales", { model: 5, hardness: 0.85, rvMix: 0.3, rvDecay: 2.8 }],
   ["Singing Bowl", { model: 6, hardness: 0.3, warble: 1.3, width: 0.6, rackSpread: 0, rvMix: 0.3, rvDecay: 3.5 }],
+  // Dry, sharp variants: little or no reverb, hard mallet, more strike.
+  ["Tubular Bells - Dry Hard Hit", { model: 1, hardness: 0.9, velToHardness: 0.35, strike: 4, brightness: 0.1, rvMix: 0.08, rvDecay: 0.9, rvSize: 0.2, rvPredelay: 4, outGain: -1 }],
+  ["Tubular Bells - Dry Plastic", { model: 1, hardness: 0.95, velToHardness: 0.3, strike: 6, brightness: 0.2, damp: 0.2, rvMix: 0.05, rvDecay: 0.8, rvSize: 0.15, rvPredelay: 2, outGain: -5 }],
+  ["Tubular Bells - Dry Short", { model: 1, hardness: 0.88, strike: 4, decay: 0.7, ringMode: 1, release: 0.25, rvMix: 0.06, rvDecay: 0.8, rvSize: 0.2 }],
+  ["Tubular Bells - Dry Staccato", { model: 1, hardness: 0.95, strike: 6, ringMode: 1, release: 0.12, rvMix: 0.05, rvDecay: 0.7, rvSize: 0.15 }],
+  ["Tubular Bells - Studio Close", { model: 1, hardness: 0.85, strike: 3, width: 0.55, rackSpread: 0.5, rvMix: 0.1, rvDecay: 0.7, rvSize: 0.15, rvPredelay: 0 }],
+  ["Tubular Bells - Tight Clank", { model: 1, hardness: 0.92, strike: 8, brightness: 0.15, decay: 0.85, damp: 0.25, rvMix: 0.12, rvDecay: 1.0, rvSize: 0.25, outGain: -4 }],
+  ["Tubular Bells - Bone Dry", { model: 1, hardness: 0.9, strike: 4, rvMix: 0.0, hpFreq: 80 }],
+  ["Tubular Bells - Dry Band Cut", { model: 1, hardness: 0.85, strike: 3, rvMix: 0.08, rvDecay: 0.9, rvSize: 0.2, lsGain: -2, p2Freq: 2500, p2Gain: 3, p2Q: 0.8, hpFreq: 90 }],
+  ["Church Bell - Dry Strike", { model: 0, hardness: 0.9, strike: 4, decay: 0.7, rvMix: 0.08, rvDecay: 1.0, rvSize: 0.25 }],
+  ["Handbells - Dry", { model: 2, hardness: 0.65, strike: 2, width: 0.6, rackSpread: 0.5, rvMix: 0.08, rvDecay: 0.9, rvSize: 0.2, outGain: 3 }],
+  ["Glockenspiel - Dry Brass", { model: 3, hardness: 0.95, strike: 4, rvMix: 0.06, rvDecay: 0.8, rvSize: 0.15 }],
+  ["Crotales - Dry", { model: 5, hardness: 0.92, strike: 3, rvMix: 0.08, rvDecay: 0.9, rvSize: 0.2 }],
 ];
 
 // ------------------------------------------------------------------ audio graph
@@ -634,6 +651,8 @@ const actions = {
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   },
   import: () => $("#importFile").click(),
+  undo: () => undoRedo(false),
+  redo: () => undoRedo(true),
 };
 $("#importFile").addEventListener("change", async (e) => {
   const f = e.target.files[0]; e.target.value = "";
@@ -644,6 +663,7 @@ const menu = $("#menu"), moreBtn = $("#moreBtn");
 function closeMenu() { menu.hidden = true; moreBtn.setAttribute("aria-expanded", "false"); }
 moreBtn.addEventListener("click", (e) => {
   e.stopPropagation();
+  $("#menuUndo").disabled = !canUndo(); $("#menuRedo").disabled = !canRedo();
   menu.hidden = !menu.hidden; moreBtn.setAttribute("aria-expanded", String(!menu.hidden));
   if (!menu.hidden) menu.querySelector("button:not([disabled]):not([hidden])")?.focus();
 });
@@ -1174,6 +1194,53 @@ buildKeys();
 drawEq();
 initMidi();
 
+// ------------------------------------------------------------------ undo / redo
+// Same model as the plugin: whole-sound snapshots, one step once things have been still for 250 ms
+// with no pointer held, so a knob drag or a preset load is one step.
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+document.querySelectorAll('.kbd[data-k="undo"]').forEach((k) => (k.textContent = isMac ? "⌘Z" : "Ctrl+Z"));
+document.querySelectorAll('.kbd[data-k="redo"]').forEach((k) => (k.textContent = isMac ? "⇧⌘Z" : "Ctrl+Y"));
+const snapKey = (o) => JSON.stringify(o);
+let undoStack = [snapshot()], histPos = 0, pendingKey = "", pendingSince = 0, pointersDown = 0;
+document.addEventListener("pointerdown", () => pointersDown++, true);
+for (const ev of ["pointerup", "pointercancel"]) document.addEventListener(ev, () => (pointersDown = Math.max(0, pointersDown - 1)), true);
+window.addEventListener("blur", () => (pointersDown = 0));
+function commitNow() {
+  const snap = snapshot(); pendingKey = "";
+  if (snapKey(snap) === snapKey(undoStack[histPos])) return;
+  undoStack = undoStack.slice(0, histPos + 1); undoStack.push(snap);
+  if (undoStack.length > 200) undoStack.shift();
+  histPos = undoStack.length - 1;
+}
+setInterval(() => {
+  const key = snapKey(snapshot());
+  if (key === snapKey(undoStack[histPos])) { pendingKey = ""; return; }
+  if (pointersDown > 0) return;
+  if (key !== pendingKey) { pendingKey = key; pendingSince = performance.now(); return; }
+  if (performance.now() - pendingSince >= 250) commitNow();
+}, 60);
+const canUndo = () => histPos > 0 || snapKey(snapshot()) !== snapKey(undoStack[histPos]);
+const canRedo = () => histPos + 1 < undoStack.length;
+function changedLabels(a, b) {
+  const names = PARAMS.filter((p) => a[p.id] !== b[p.id]).map((p) => (BAND_OF[p.id] ? BAND_OF[p.id] + " " : "") + p.label);
+  return names.length > 3 ? names.slice(0, 3).join(", ") + ` and ${names.length - 3} more` : names.join(", ");
+}
+function undoRedo(redo) {
+  if (!redo) commitNow();
+  const target = redo ? histPos + 1 : histPos - 1;
+  if (target < 0 || target >= undoStack.length) { toast(redo ? "Nothing to redo" : "Nothing to undo"); return; }
+  const before = snapshot();
+  histPos = target;
+  applyParams(undoStack[histPos]);
+  pendingKey = "";
+  toast((redo ? "Redo: " : "Undo: ") + (changedLabels(before, undoStack[histPos]) || "no change"));
+}
+window.addEventListener("keydown", (e) => {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey || typing(e)) return;   // text fields keep their own undo
+  const k = e.key.toLowerCase();
+  if (k === "z") { e.preventDefault(); undoRedo(e.shiftKey); }
+  else if (k === "y") { e.preventDefault(); undoRedo(true); }
+});
 // ------------------------------------------------------------------ output device (Chrome / Edge: AudioContext.setSinkId)
 // Lets the page play into a sound card without changing the Mac's system output.
 const outSel = $("#output");
