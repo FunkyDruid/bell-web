@@ -580,7 +580,11 @@ function askSave(prefill, title = "Save preset") {
   });
 }
 const framed = window.self !== window.top;
-if (framed) { $("#menuLink").hidden = true; $("#menuExport").hidden = true; }   // claude.ai frames block downloads and link hashes
+let frameDownloads = null;
+if (framed) {   // claude.ai frames block plain downloads and link hashes; downloads go through the viewer instead
+  $("#menuLink").hidden = true; $("#menuExport").hidden = true;
+  window.claude?.use?.("downloads").then((d) => { if (d) { frameDownloads = d; $("#menuExport").hidden = false; } }).catch(() => {});
+}
 
 const actions = {
   saveAs: () => askSave(current.key.startsWith("u:") ? current.name + " 2" : current.name + " (mine)", "Save as new preset"),
@@ -613,6 +617,13 @@ const actions = {
     copyText(location.origin + location.pathname + "#preset=" + b64, "Share link copied", "Share link");
   },
   export: () => {
+    const base = current.name.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "bell-preset";
+    if (frameDownloads) {
+      frameDownloads.save({ filename: base + ".json", data: presetJson(current.name) })
+        .then(() => toast("Preset saved"))
+        .catch((e) => { if (e?.code !== "declined") toast("Couldn't save the file here. Use Copy preset as JSON instead."); });
+      return;
+    }
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([presetJson(current.name)], { type: "application/json" }));
     a.download = current.name.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") + ".bellpreset";
