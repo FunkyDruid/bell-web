@@ -1,0 +1,957 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bell</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: an instrument face. Keyboard first under a slim header, control panels in a grid below,
+   EQ spanning two columns. Flat print palette: paper, ink, three Bauhaus accents. */
+:root {
+  --paper: #eee8da; --panel: #e5ddcc; --ink: #191817; --muted: #6b655b; --rule: #c9bfab;
+  --red: #c23b2a; --blue: #1f4b8e; --ochre: #d69a1e; --knob: #f7f3ea;
+  --key-white: #fbf8f1; --key-black: #191817; --key-down: #d69a1e; --key-label: #8a8376;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #161513; --panel: #201e1b; --ink: #eee8da; --muted: #a29a8c; --rule: #3b3731;
+    --red: #e0533f; --blue: #7197d8; --ochre: #e3ae3a; --knob: #2a2723;
+    --key-white: #d9d2c3; --key-black: #0c0b0a; --key-down: #e3ae3a; --key-label: #6f685c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #161513; --panel: #201e1b; --ink: #eee8da; --muted: #a29a8c; --rule: #3b3731;
+  --red: #e0533f; --blue: #7197d8; --ochre: #e3ae3a; --knob: #2a2723;
+  --key-white: #d9d2c3; --key-black: #0c0b0a; --key-down: #e3ae3a; --key-label: #6f685c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 28px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 14px; }
+button, select { font: inherit; color: var(--ink); }
+:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+/* header */
+header { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 18px; }
+.mark { font-family: var(--font-display); font-weight: 800; font-size: 34px; letter-spacing: 0.01em; line-height: 1; display: flex; align-items: start; gap: 4px; margin-right: 6px; }
+.mark i { width: 10px; height: 10px; border-radius: 50%; background: var(--red); display: block; margin-top: 4px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field > span { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.row { display: flex; gap: 6px; align-items: center; }
+select { background: var(--paper); border: 1.5px solid var(--ink); border-radius: 0; height: 36px; padding: 0 30px 0 10px; appearance: none; min-width: 0; max-width: 100%;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%), linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 15px, calc(100% - 11px) 15px; background-size: 5px 5px; background-repeat: no-repeat; }
+#preset { width: 300px; }
+.btn { background: var(--paper); border: 1.5px solid var(--ink); height: 36px; min-width: 36px; padding: 0 12px; font-weight: 600; cursor: pointer; border-radius: 0; }
+.btn:hover { background: var(--panel); }
+.btn[aria-pressed="true"], .btn:active { background: var(--ink); color: var(--paper); }
+.spacer { flex: 1; }
+.chip { font-family: var(--font-data); font-size: 12px; color: var(--muted); border: 1.5px solid var(--rule); padding: 0 10px; height: 36px; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.chip b { width: 8px; height: 8px; border-radius: 50%; background: var(--rule); display: inline-block; }
+.chip.live { color: var(--ink); border-color: var(--ink); }
+.chip.live b { background: var(--blue); }
+
+/* keyboard */
+.stage { background: var(--panel); border-top: 3px solid var(--ochre); padding: 12px 14px 14px; display: grid; gap: 10px; }
+.stage-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.stage-top .title { font-weight: 800; font-size: 13px; letter-spacing: 0.08em; }
+.range { font-family: var(--font-data); font-size: 12px; color: var(--muted); min-width: 64px; text-align: center; }
+.hint { font-size: 12.5px; color: var(--muted); }
+.keys { position: relative; height: 190px; user-select: none; -webkit-user-select: none; touch-action: none; display: flex; }
+.key-w { flex: 1; background: var(--key-white); border: 1.5px solid var(--ink); border-right-width: 0; position: relative; display: flex; align-items: end; justify-content: center; padding-bottom: 8px; }
+.key-w:last-child { border-right-width: 1.5px; }
+.key-b { position: absolute; top: 0; height: 60%; background: var(--key-black); border: 1.5px solid var(--ink); z-index: 2; display: flex; align-items: end; justify-content: center; padding-bottom: 6px; }
+.key-w.down, .key-b.down { background: var(--key-down); }
+.key-w .c { position: absolute; left: 0; right: 0; bottom: 30px; text-align: center; font-family: var(--font-data); font-size: 10px; color: var(--muted); }
+.kl { font-family: var(--font-data); font-size: 11px; color: var(--key-label); pointer-events: none; }
+.key-b .kl { color: #8a8376; }
+@media (hover: none) and (pointer: coarse) { .kl, .desk-only { display: none; } .keys { height: 170px; } }
+
+/* panels */
+.panels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.panel { background: var(--panel); padding: 10px 12px 12px; border-top: 3px solid var(--c, var(--ink)); min-width: 0; display: grid; gap: 8px; align-content: start; }
+.panel h2 { margin: 0; font-size: 12.5px; font-weight: 800; letter-spacing: 0.08em; display: flex; align-items: center; gap: 8px; }
+.panel h2::before { content: ""; width: 8px; height: 8px; background: var(--c, var(--ink)); }
+.panel h2 .right { margin-left: auto; }
+.knobs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 4px; }
+.eq { grid-column: span 2; }
+.space { grid-column: span 1; }
+.out { grid-column: span 1; }
+
+.knob { display: grid; justify-items: center; gap: 2px; touch-action: none; cursor: ns-resize; padding: 2px 0; border-radius: 4px; }
+.knob svg { width: 56px; height: 56px; display: block; overflow: visible; }
+.knob .lab { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.2; min-height: 15px; white-space: nowrap; }
+.knob.show .lab { color: var(--ink); font-family: var(--font-data); font-size: 11.5px; }
+.knob.small svg { width: 38px; height: 38px; }
+.knob.small .lab { font-size: 11px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1.5px solid var(--ink); }
+.seg button { border: 0; background: var(--paper); padding: 7px 4px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; cursor: pointer; background: none; border: 0; padding: 0; }
+.toggle i { width: 14px; height: 14px; border: 1.5px solid var(--ink); display: inline-grid; place-items: center; }
+.toggle[aria-pressed="true"] i::after { content: ""; width: 7px; height: 7px; background: var(--ink); }
+
+#eqCanvas { width: 100%; height: 170px; display: block; border: 1.5px solid var(--ink); background: var(--knob); touch-action: none; }
+.eqbands { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.band { display: grid; gap: 2px; justify-items: center; align-content: start; }
+.band h3 { margin: 0 0 2px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; border-bottom: 2px solid var(--bc); padding-bottom: 1px; white-space: nowrap; }
+.meter { height: 14px; border: 1.5px solid var(--ink); background: var(--knob); position: relative; }
+.meter .fill { position: absolute; inset: 0 auto 0 0; background: var(--ink); width: 0%; }
+.meter .hold { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--red); left: 0; }
+.meter-scale { display: flex; justify-content: space-between; font-family: var(--font-data); font-size: 10px; color: var(--muted); }
+.readout { font-family: var(--font-data); font-size: 12px; color: var(--muted); }
+.readout.hot { color: var(--red); }
+.tip { position: fixed; z-index: 50; max-width: 260px; background: var(--ink); color: var(--paper); padding: 9px 11px; font-size: 12.5px; line-height: 1.4; pointer-events: none; display: grid; gap: 4px; }
+.tip strong { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+.tip .hl { display: grid; grid-template-columns: 52px 1fr; gap: 6px; }
+.tip .hl span:first-child { font-family: var(--font-data); font-size: 11px; opacity: 0.7; padding-top: 1px; }
+footer { font-size: 12.5px; color: var(--muted); max-width: 70ch; line-height: 1.5; }
+
+@media (max-width: 960px) {
+  .panels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .eq { grid-column: span 2; }
+}
+@media (max-width: 560px) {
+  #preset { width: 100%; }
+  header .field.grow { flex: 1 1 100%; }
+  .panels { grid-template-columns: minmax(0, 1fr); }
+  .eq, .space, .out { grid-column: auto; }
+  .eqbands { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="tip" id="tip" role="tooltip" hidden></div>
+<div class="wrap">
+  <header>
+    <div class="mark" aria-label="Bell">BELL<i></i></div>
+    <label class="field grow"><span>Preset</span>
+      <div class="row">
+        <select id="preset" aria-label="Preset"></select>
+        <button class="btn" id="prev" aria-label="Previous preset">&lt;</button>
+        <button class="btn" id="next" aria-label="Next preset">&gt;</button>
+      </div>
+    </label>
+    <label class="field"><span>Instrument</span><select id="model" aria-label="Instrument"></select></label>
+    <div class="spacer"></div>
+    <div class="row">
+      <span class="chip" id="midiChip"><b></b><span id="midiText">Checking for MIDI</span></span>
+      <span class="chip" id="voiceChip">0 ringing</span>
+      <button class="btn" id="panic">Panic</button>
+    </div>
+  </header>
+
+  <section class="stage" aria-label="Keyboard">
+    <div class="stage-top">
+      <span class="title">KEYS</span>
+      <div class="row">
+        <button class="btn" id="octDown" aria-label="Octave down">&minus;</button>
+        <span class="range" id="range">C4</span>
+        <button class="btn" id="octUp" aria-label="Octave up">+</button>
+      </div>
+      <button class="btn" id="pedal" aria-pressed="false">Pedal <span class="desk-only kl" style="color:inherit">&nbsp;space</span></button>
+      <span class="hint">Strike lower on a key to play louder.</span>
+      <span class="hint desk-only" id="octHint">W / X shift octave.</span>
+    </div>
+    <div class="keys" id="keys"></div>
+  </section>
+
+  <div class="panels" id="panels"></div>
+
+  <footer>
+    The same modal engine as the Bell AU/VST3 plugin: every key is its own tube, a bank of resonating partials at the ratios
+    measured on orchestral chimes, struck by a mallet pulse. MIDI keyboards work in Chrome and Edge; Safari has no Web MIDI.
+  </footer>
+</div>
+
+<script>
+"use strict";
+const $ = (s, el = document) => el.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("bell:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("bell:" + k, JSON.stringify(v)); } catch {} },
+};
+
+// ------------------------------------------------------------------ parameters (mirror Source/Params.h)
+const MODEL_NAMES = ["Church Bell", "Tubular Bells", "Handbells", "Glockenspiel", "Celesta", "Crotales", "Singing Bowl"];
+const pct = (v) => Math.round(v * 100) + "%";
+const db = (v) => (v > 0 ? "+" : "") + v.toFixed(1) + " dB";
+const hz = (v) => (v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 1 : 2) + " kHz" : Math.round(v) + " Hz");
+const sec = (v) => (v < 1 ? Math.round(v * 1000) + " ms" : v.toFixed(2) + " s");
+const times = (v) => v.toFixed(2) + "x";
+const bip = (v) => (v > 0 ? "+" : "") + Math.round(v * 100);
+const P = (id, label, min, max, def, fmt, o = {}) => ({ id, label, min, max, def, fmt, ...o });
+const PARAMS = [
+  P("model", "Instrument", 0, 6, 1, (v) => MODEL_NAMES[v], { step: 1 }),
+  P("hardness", "Mallet", 0, 1, 0.7, pct), P("velToHardness", "Vel > Mallet", 0, 1, 0.55, pct),
+  P("velSens", "Velocity", 0, 1, 0.75, pct), P("strike", "Strike", -30, 12, 0, db, { bipolar: true }),
+  P("brightness", "Brightness", -1, 1, 0, bip, { bipolar: true }), P("hum", "Hum", -30, 12, 0, db, { bipolar: true }),
+  P("warble", "Beating", 0, 3, 1, times), P("stretch", "Stretch", -1, 1, 0, bip, { bipolar: true }),
+  P("character", "Character", 0, 1, 0.25, pct),
+  P("decay", "Ring", 0.1, 4, 1, times, { centre: 1 }), P("damp", "Damp highs", 0, 1, 0.1, pct),
+  P("sizeTrack", "Size track", 0, 1, 1, pct), P("ringMode", "Damper", 0, 1, 0, String, { step: 1 }),
+  P("release", "Release", 0.05, 8, 1.2, sec, { centre: 1 }),
+  P("transpose", "Transpose", -24, 24, 0, (v) => (v > 0 ? "+" : "") + Math.round(v) + " st", { step: 1, bipolar: true }),
+  P("tune", "Fine tune", -100, 100, 0, (v) => (v > 0 ? "+" : "") + v.toFixed(1) + " ct", { bipolar: true }),
+  P("bendRange", "Bend", 0, 12, 2, (v) => Math.round(v) + " st", { step: 1 }),
+  P("width", "Width", 0, 1, 0.5, pct), P("rackSpread", "Rack spread", 0, 1, 0.3, pct),
+  P("eqOn", "EQ", 0, 1, 1, String, { step: 1 }),
+  P("hpFreq", "Freq", 20, 2000, 20, hz, { centre: Math.sqrt(20 * 2000) }),
+  P("lsFreq", "Freq", 30, 1000, 150, hz, { centre: Math.sqrt(30 * 1000) }), P("lsGain", "Gain", -18, 18, 0, db, { bipolar: true }),
+  P("p1Freq", "Freq", 40, 18000, 400, hz, { centre: Math.sqrt(40 * 18000) }), P("p1Gain", "Gain", -18, 18, 0, db, { bipolar: true }), P("p1Q", "Q", 0.2, 10, 1, (v) => v.toFixed(2), { centre: 1 }),
+  P("p2Freq", "Freq", 40, 18000, 2000, hz, { centre: Math.sqrt(40 * 18000) }), P("p2Gain", "Gain", -18, 18, 0, db, { bipolar: true }), P("p2Q", "Q", 0.2, 10, 1, (v) => v.toFixed(2), { centre: 1 }),
+  P("p3Freq", "Freq", 40, 18000, 6000, hz, { centre: Math.sqrt(40 * 18000) }), P("p3Gain", "Gain", -18, 18, 0, db, { bipolar: true }), P("p3Q", "Q", 0.2, 10, 1, (v) => v.toFixed(2), { centre: 1 }),
+  P("hsFreq", "Freq", 1000, 18000, 8000, hz, { centre: Math.sqrt(1000 * 18000) }), P("hsGain", "Gain", -18, 18, 0, db, { bipolar: true }),
+  P("lpFreq", "Freq", 1000, 20000, 20000, hz, { centre: Math.sqrt(1000 * 20000) }),
+  P("rvMix", "Mix", 0, 1, 0.3, pct), P("rvDecay", "Decay", 0.3, 12, 2.6, sec, { centre: 2.5 }),
+  P("rvSize", "Size", 0, 1, 0.6, pct), P("rvDamp", "Damping", 0, 1, 0.4, pct),
+  P("rvPredelay", "Pre-delay", 0, 150, 18, (v) => Math.round(v) + " ms"),
+  P("outGain", "Output", -30, 12, 0, db, { bipolar: true }), P("limiter", "Safety limiter", 0, 1, 1, String, { step: 1 }),
+];
+const SPEC = Object.fromEntries(PARAMS.map((p) => [p.id, p]));
+for (const p of PARAMS) if (p.centre != null) p.skew = Math.log(0.5) / Math.log((p.centre - p.min) / (p.max - p.min));
+const toNorm = (p, v) => { const t = (v - p.min) / (p.max - p.min); return Math.min(1, Math.max(0, p.skew ? Math.pow(Math.max(t, 0), p.skew) : t)); };
+const fromNorm = (p, n) => {
+  n = Math.min(1, Math.max(0, n));
+  let v = p.min + (p.max - p.min) * (p.skew ? Math.pow(n, 1 / p.skew) : n);
+  if (p.step) v = Math.round(v / p.step) * p.step;
+  return v;
+};
+const values = Object.fromEntries(PARAMS.map((p) => [p.id, p.def]));
+
+// ------------------------------------------------------------------ presets (mirror Source/Presets.h)
+const PRESETS = [
+  ["Tubular Bells - Concert Hall", { model: 1, hardness: 0.72, width: 0.45, rackSpread: 0.35, rvMix: 0.32, rvDecay: 2.6, rvSize: 0.65, rvDamp: 0.4, rvPredelay: 20 }],
+  ["Tubular Bells - Rawhide Mallet", { model: 1, hardness: 0.6, strike: -3, brightness: -0.1, rvMix: 0.3, rvDecay: 2.4, rvSize: 0.6 }],
+  ["Tubular Bells - Plastic Hammer", { model: 1, hardness: 0.88, velToHardness: 0.4, strike: 3, brightness: 0.15, rvMix: 0.3, rvDecay: 2.6 }],
+  ["Tubular Bells - Soft Mallet", { model: 1, hardness: 0.32, velToHardness: 0.6, strike: -9, brightness: -0.25, rvMix: 0.34, rvDecay: 2.8 }],
+  ["Tubular Bells - Damper Pedal", { model: 1, hardness: 0.72, ringMode: 1, release: 0.7, rvMix: 0.3, rvDecay: 2.4 }],
+  ["Tubular Bells - Dry for FOH", { model: 1, hardness: 0.72, width: 0.35, rackSpread: 0.25, rvMix: 0, hpFreq: 70 }],
+  ["Tubular Bells - Close Mic", { model: 1, hardness: 0.75, strike: 2, width: 0.6, rackSpread: 0.6, rvMix: 0.14, rvDecay: 1.2, rvSize: 0.3, rvPredelay: 8 }],
+  ["Tubular Bells - Cathedral", { model: 1, hardness: 0.7, decay: 1.2, width: 0.6, rvMix: 0.45, rvDecay: 6.5, rvSize: 0.95, rvDamp: 0.5, rvPredelay: 35 }],
+  ["Tubular Bells - Distant Tower", { model: 1, hardness: 0.7, width: 0.3, rvMix: 0.62, rvDecay: 5, rvSize: 0.9, rvPredelay: 70, hpFreq: 110, lpFreq: 6500 }],
+  ["Tubular Bells - Cinematic Low", { model: 1, transpose: -12, hardness: 0.68, decay: 1.4, hum: 4, warble: 1.4, strike: -2, width: 0.6, rvMix: 0.42, rvDecay: 5.5, rvSize: 0.9, rvPredelay: 30 }],
+  ["Church Bell - Cathedral", { model: 0, transpose: -12, hardness: 0.8, warble: 1.2, width: 0.7, rackSpread: 0.2, rvMix: 0.42, rvDecay: 6.5, rvSize: 0.95, rvDamp: 0.5, rvPredelay: 35 }],
+  ["Church Bell - Funeral Toll", { model: 0, transpose: -24, hardness: 0.75, decay: 1.4, warble: 1.6, hum: 3, rackSpread: 0, rvMix: 0.45, rvDecay: 8, rvSize: 1, rvDamp: 0.6, rvPredelay: 40 }],
+  ["Carillon", { model: 0, transpose: 12, hardness: 0.85, decay: 0.7, width: 0.7, rackSpread: 0.5, rvMix: 0.28, rvDecay: 2.2, rvPredelay: 45 }],
+  ["Handbell Choir", { model: 2, hardness: 0.45, velToHardness: 0.6, warble: 1.1, width: 0.85, rackSpread: 0.6, rvMix: 0.35, rvDecay: 2.4 }],
+  ["Glockenspiel", { model: 3, hardness: 0.85, width: 0.4, rvMix: 0.28, rvDecay: 2 }],
+  ["Celesta", { model: 4, hardness: 0.3, velToHardness: 0.4, ringMode: 1, release: 0.35, rvMix: 0.28, rvDecay: 2.2 }],
+  ["Crotales", { model: 5, hardness: 0.85, rvMix: 0.3, rvDecay: 2.8 }],
+  ["Singing Bowl", { model: 6, hardness: 0.3, warble: 1.3, width: 0.6, rackSpread: 0, rvMix: 0.3, rvDecay: 3.5 }],
+];
+
+// ------------------------------------------------------------------ audio graph
+let ctx = null, engine = null, nodes = null, starting = null;
+const pending = [];
+
+function engineSettings() {
+  const v = values;
+  return {
+    model: v.model, hardness: v.hardness, velToHardness: v.velToHardness, velSens: v.velSens, strikeDb: v.strike,
+    brightness: v.brightness, humDb: v.hum, stretch: v.stretch, character: v.character, warble: v.warble, decay: v.decay,
+    damp: v.damp, sizeTrack: v.sizeTrack, dampOnRelease: v.ringMode > 0.5, release: v.release,
+    transpose: Math.round(v.transpose), tuneCents: v.tune, bendRange: v.bendRange, width: v.width, rackSpread: v.rackSpread,
+  };
+}
+
+function send(msg) {
+  if (engine) engine.port.postMessage(msg);
+  else { pending.push(msg); start(); }
+}
+
+async function start() {
+  if (ctx) { if (ctx.state === "suspended") ctx.resume(); return starting; }
+  ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+  starting = (async () => {
+    await ctx.audioWorklet.addModule("bell-worklet.js");
+    engine = new AudioWorkletNode(ctx, "bell-engine", { numberOfInputs: 0, outputChannelCount: [2] });
+    const limiter = new AudioWorkletNode(ctx, "bell-limiter", { outputChannelCount: [2] });
+    const g = () => ctx.createGain();
+    const bq = (type, f, q) => { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q != null) b.Q.value = q; return b; };
+    const dry = g(), sum = g(), sendHp = bq("highpass", 110, -3.01);
+    const conv = [ctx.createConvolver(), ctx.createConvolver()];
+    const wet = [g(), g()];
+    conv.forEach((c, i) => { c.normalize = false; sendHp.connect(c); c.connect(wet[i]); wet[i].gain.value = 0; wet[i].connect(sum); });
+    engine.connect(dry); engine.connect(sendHp); dry.connect(sum);
+    // EQ: Web Audio's biquads are the same RBJ cookbook filters as the plugin. LP/HP Q is in dB here.
+    const eq = [bq("highpass", 1, -5.33), bq("highpass", 1, 2.32), bq("lowshelf", 150), bq("peaking", 400, 1), bq("peaking", 2000, 1),
+                bq("peaking", 6000, 1), bq("highshelf", 8000), bq("lowpass", ctx.sampleRate / 2, -3.01)];
+    let prev = sum;
+    for (const f of eq) { prev.connect(f); prev = f; }
+    const out = g();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.6;
+    prev.connect(out); out.connect(limiter); limiter.connect(analyser); analyser.connect(ctx.destination);
+    nodes = { dry, conv, wet, active: 0, eq, out, limiter, analyser, irKey: "" };
+
+    engine.port.onmessage = ({ data }) => { if (data.type === "voices") $("#voiceChip").textContent = data.count + " ringing"; };
+    limiter.port.onmessage = ({ data }) => { if (data.type === "meter") meter(data); };
+
+    engine.port.postMessage({ type: "settings", settings: engineSettings() });
+    applyMix(); applyEq(); applyOut(); rebuildIR(true);
+    for (const m of pending.splice(0)) engine.port.postMessage(m);
+    if (ctx.state === "suspended") await ctx.resume();
+  })();
+  return starting;
+}
+
+function applyMix() {
+  if (!nodes) return;
+  const m = values.rvMix, t = ctx.currentTime;
+  nodes.dry.gain.setTargetAtTime(Math.cos((m * Math.PI) / 2), t, 0.02);
+  nodes.wet[nodes.active].gain.setTargetAtTime(Math.sin((m * Math.PI) / 2) * 1.4, t, 0.02);
+}
+function applyOut() {
+  if (!nodes) return;
+  nodes.out.gain.setTargetAtTime(Math.pow(10, values.outGain / 20), ctx.currentTime, 0.02);
+  nodes.limiter.port.postMessage({ type: "on", on: values.limiter > 0.5 });
+}
+function applyEq() {
+  if (!nodes) return;
+  const v = values, on = v.eqOn > 0.5, [h1, h2, ls, p1, p2, p3, hs, lp] = nodes.eq, t = ctx.currentTime, ny = ctx.sampleRate / 2;
+  const set = (param, x) => param.setTargetAtTime(x, t, 0.015);
+  const hp = on && v.hpFreq > 20.5 ? v.hpFreq : 1;
+  set(h1.frequency, hp); set(h2.frequency, hp);
+  set(ls.frequency, v.lsFreq); set(ls.gain, on ? v.lsGain : 0);
+  for (const [f, k] of [[p1, "p1"], [p2, "p2"], [p3, "p3"]]) { set(f.frequency, v[k + "Freq"]); set(f.gain, on ? v[k + "Gain"] : 0); set(f.Q, v[k + "Q"]); }
+  set(hs.frequency, v.hsFreq); set(hs.gain, on ? v.hsGain : 0);
+  set(lp.frequency, on && v.lpFreq < 19990 ? Math.min(v.lpFreq, ny * 0.96) : ny);
+}
+
+// Shaped-noise impulse response: same recipe as Source/Space.h.
+function fftInPlace(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit;
+    if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (2 * Math.PI) / len, wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const a = i + k, b = a + len / 2;
+        const tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+        const ncr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = ncr;
+      }
+    }
+  }
+}
+function makeIR(fs, s) {
+  const decay = Math.min(14, Math.max(0.2, s.rvDecay)), damp = s.rvDamp, size = s.rvSize;
+  const pre = Math.round(Math.min(250, Math.max(0, s.rvPredelay)) * 0.001 * fs);
+  const tail = Math.ceil(Math.min(decay * 1.25 + 0.1, 16) * fs), total = pre + tail;
+  const N = 1024, hop = 256;
+  const hzA = [63, 250, 1000, 4000, 8000, 16000];
+  const tA = [decay * 1.12, decay * 1.06, decay, decay * (1 - 0.55 * damp), decay * (1 - 0.8 * damp) * 0.9, decay * (1 - 0.9 * damp) * 0.6];
+  const t60 = (f) => {
+    if (f <= hzA[0]) return tA[0];
+    for (let i = 1; i < 6; i++) if (f <= hzA[i]) { const a = (Math.log2(f) - Math.log2(hzA[i - 1])) / (Math.log2(hzA[i]) - Math.log2(hzA[i - 1])); return Math.max(0.08, tA[i - 1] + a * (tA[i] - tA[i - 1])); }
+    return Math.max(0.08, tA[5]);
+  };
+  const rate = new Float32Array(N / 2 + 1), tilt = new Float32Array(N / 2 + 1), corner = 14000 * (1 - 0.6 * damp);
+  for (let b = 0; b <= N / 2; b++) { const f = Math.max(20, (b * fs) / N); rate[b] = 6.907755 / t60(f); tilt[b] = 1 / Math.sqrt(1 + (f / corner) ** 2); }
+  rate[0] = rate[1];
+  const win = new Float32Array(N).map((_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / N));
+  const buf = ctx.createBuffer(2, total, fs);
+  const buildTau = 0.004 + 0.05 * size, re = new Float64Array(N), im = new Float64Array(N);
+  for (let ch = 0; ch < 2; ch++) {
+    const out = buf.getChannelData(ch).subarray(pre);
+    for (let start = -N / 2; start < tail; start += hop) {
+      const t = Math.max(0, (start + N / 2) / fs), build = 1 - Math.exp(-t / buildTau);
+      re.fill(0); im.fill(0);
+      for (let b = 1; b < N / 2; b++) {
+        const mag = build * tilt[b] * Math.exp(-rate[b] * t), ph = Math.random() * 2 * Math.PI;
+        re[b] = mag * Math.cos(ph); im[b] = mag * Math.sin(ph); re[N - b] = re[b]; im[N - b] = -im[b];
+      }
+      fftInPlace(re, im);
+      for (let i = 0; i < N; i++) { const idx = start + i; if (idx >= 0 && idx < tail) out[idx] += re[i] * win[i]; }
+    }
+    let e = 0; for (let i = 0; i < tail; i++) e += out[i] * out[i];
+    const gn = e > 0 ? 1 / Math.sqrt(e) : 0; for (let i = 0; i < tail; i++) out[i] *= gn;
+    const span = (0.012 + 0.07 * size) * fs, each = 0.35 / Math.sqrt(14);
+    for (let k = 0; k < 14; k++) {
+      const pos = Math.pow(Math.random(), 0.7) * span + 0.002 * fs;
+      const a = each * Math.exp(-pos / (0.6 * span)) * (Math.random() < 0.5 ? 1 : -1) * (0.6 + 0.4 * Math.random());
+      const p = pos | 0; if (p + 2 < tail) { out[p] += 0.25 * a; out[p + 1] += 0.5 * a; out[p + 2] += 0.25 * a; }
+    }
+    const fade = Math.min((tail / 10) | 0, (0.3 * fs) | 0);
+    for (let i = 0; i < fade; i++) out[tail - 1 - i] *= 0.5 - 0.5 * Math.cos((Math.PI * i) / fade);
+    const all = buf.getChannelData(ch); let e2 = 0; for (let i = 0; i < total; i++) e2 += all[i] * all[i];
+    const g2 = 1 / Math.sqrt(e2 || 1); for (let i = 0; i < total; i++) all[i] *= g2;
+  }
+  return buf;
+}
+let irTimer = 0;
+function rebuildIR(now) {
+  if (!nodes) return;
+  clearTimeout(irTimer);
+  irTimer = setTimeout(() => {
+    const key = [values.rvDecay, values.rvSize, values.rvDamp, values.rvPredelay].join("|");
+    if (key === nodes.irKey) return;
+    nodes.irKey = key;
+    const next = 1 - nodes.active, t = ctx.currentTime;
+    nodes.conv[next].buffer = makeIR(ctx.sampleRate, values);
+    nodes.wet[nodes.active].gain.setTargetAtTime(0, t, 0.08);       // crossfade old room out
+    nodes.active = next;
+    applyMix();                                                       // and the new one in
+  }, now ? 0 : 200);
+}
+
+// ------------------------------------------------------------------ parameter changes
+let settingsQueued = false;
+const ENGINE_IDS = new Set(["model", "hardness", "velToHardness", "velSens", "strike", "brightness", "hum", "stretch", "character", "warble", "decay", "damp", "sizeTrack", "ringMode", "release", "transpose", "tune", "bendRange", "width", "rackSpread"]);
+function setValue(id, v, { silent = false } = {}) {
+  const p = SPEC[id];
+  v = fromNorm(p, toNorm(p, v));
+  values[id] = v;
+  if (!silent) refreshControl(id);
+  if (ENGINE_IDS.has(id) && !settingsQueued) {
+    settingsQueued = true;
+    requestAnimationFrame(() => { settingsQueued = false; if (engine) engine.port.postMessage({ type: "settings", settings: engineSettings() }); });
+  }
+  if (id === "rvMix") applyMix();
+  if (id.startsWith("rv") && id !== "rvMix") rebuildIR(false);
+  if (/^(eqOn|hp|ls|p[123]|hs|lp)/.test(id)) { applyEq(); drawEq(); }
+  if (id === "outGain" || id === "limiter") applyOut();
+}
+
+function applyPreset(i) {
+  i = (i + PRESETS.length) % PRESETS.length;
+  const [name, over] = PRESETS[i];
+  for (const p of PARAMS) setValue(p.id, over[p.id] ?? p.def, { silent: true });
+  for (const p of PARAMS) refreshControl(p.id);
+  $("#preset").value = String(i);
+  store.set("preset", i);
+  return name;
+}
+
+// ------------------------------------------------------------------ tooltips: what moving each control does
+const TIPS = {
+  hardness: ["Harder mallet: brighter, more clang in the attack.", "Softer felt mallet: rounder and darker. Loudness stays about the same."],
+  velToHardness: ["Playing harder also makes the hit brighter, like a real mallet.", "Same brightness at every velocity."],
+  velSens: ["Wide dynamics: soft notes get much quieter than loud ones.", "Every note comes out at about the same volume."],
+  strike: ["More metallic click and clang at the moment of impact.", "Smoother, cleaner attack."],
+  brightness: ["Upper partials louder: glassier, cuts through a mix.", "Upper partials quieter: warmer and darker."],
+  hum: ["More of the deep partial under the note.", "Thinner; the low hum fades out."],
+  warble: ["Paired partials detune further: deeper, faster wah-wah beating.", "Steadier, purer tone. At zero there is no beating."],
+  stretch: ["Partials spread sharp: more clangorous and bell-like.", "Partials pulled flat: more harmonic and tame."],
+  character: ["Each key gets its own small flaws, like a hand-tuned set.", "Every key identical and perfectly tuned."],
+  decay: ["Bells ring longer.", "Bells ring shorter."],
+  damp: ["Upper partials die quickly, leaving the low hum.", "Highs ring as long as the lows."],
+  sizeTrack: ["Low notes ring much longer than high ones, like real tubes.", "All notes ring for about the same time."],
+  release: ["The damper stops the bell slowly.", "The damper chokes it fast. Only used with Damp on release."],
+  ringMode: { title: "Damper", rows: [["Let ring", "Bells ring out after you let go of the key."], ["Damp", "Letting go damps the bell. Hold the pedal to let it ring."]] },
+  transpose: ["Every note shifts up, in semitones. +12 is an octave.", "Every note shifts down."],
+  tune: ["Sharper, in cents. +7.9 matches a band tuned to A = 442.", "Flatter."],
+  bendRange: ["The pitch wheel bends further.", "Smaller bends. At zero the wheel does nothing."],
+  width: ["Partials spread wider between left and right.", "Narrower, towards mono."],
+  rackSpread: ["Low notes left, high notes right, like a bell rack.", "Every note in the centre."],
+  hpFreq: ["Cuts more low end and rumble.", "Lets more bass through. All the way down is off."],
+  lsFreq: ["The low shelf reaches higher up.", "The low shelf only touches the deep bass."],
+  lsGain: ["More body and warmth in the low end.", "Less low end, lighter sound."],
+  p1Freq: ["Moves this band up in pitch.", "Moves this band down."], p2Freq: ["Moves this band up in pitch.", "Moves this band down."], p3Freq: ["Moves this band up in pitch.", "Moves this band down."],
+  p1Gain: ["Boosts around this frequency.", "Cuts around this frequency."], p2Gain: ["Boosts around this frequency.", "Cuts around this frequency."], p3Gain: ["Boosts around this frequency.", "Cuts around this frequency."],
+  p1Q: ["Narrower band, for surgical fixes.", "Wider, gentler band."], p2Q: ["Narrower band, for surgical fixes.", "Wider, gentler band."], p3Q: ["Narrower band, for surgical fixes.", "Wider, gentler band."],
+  hsFreq: ["The high shelf only touches the very top.", "The high shelf reaches further down."],
+  hsGain: ["More air and sparkle.", "Duller, softer top."],
+  lpFreq: ["Keeps more top end. All the way up is off.", "Cuts highs: darker, more distant."],
+  rvMix: ["More room: the bells sit further back.", "Drier and closer. At zero there is no reverb."],
+  rvDecay: ["Longer reverb tail, bigger space.", "Shorter tail, tighter room."],
+  rvSize: ["Early echoes spread out, larger room.", "Smaller, denser room."],
+  rvDamp: ["The tail darkens quickly, like a soft hall.", "Brighter tail, like stone."],
+  rvPredelay: ["A gap before the reverb keeps the strike clear.", "The reverb starts right with the strike."],
+  outGain: ["Louder output.", "Quieter output."],
+  limiter: { title: "Safety limiter", rows: [["On", "Catches peaks above -1 dBFS so nothing clips."], ["Off", "No protection."]] },
+  eqOn: { title: "EQ", rows: [["On", "The EQ shapes the sound."], ["Off", "Bypassed: the bell as it comes out of the engine."]] },
+};
+const BAND_OF = { hpFreq: "Low cut", lsFreq: "Low shelf", lsGain: "Low shelf", hsFreq: "High shelf", hsGain: "High shelf", lpFreq: "High cut",
+  p1Freq: "Bell 1", p1Gain: "Bell 1", p1Q: "Bell 1", p2Freq: "Bell 2", p2Gain: "Bell 2", p2Q: "Bell 2", p3Freq: "Bell 3", p3Gain: "Bell 3", p3Q: "Bell 3" };
+const tipEl = $("#tip");
+function tipHtml(id) {
+  const t = TIPS[id]; if (!t) return "";
+  const esc = (x) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const title = Array.isArray(t) ? (BAND_OF[id] ? BAND_OF[id] + " " : "") + SPEC[id].label : t.title;
+  const rows = Array.isArray(t) ? [["Higher", t[0]], ["Lower", t[1]]] : t.rows;
+  return `<strong>${esc(title)}</strong>` + rows.map(([k, v]) => `<div class="hl"><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join("");
+}
+function showTip(id, el) {
+  const html = tipHtml(id); if (!html) return;
+  tipEl.innerHTML = html; tipEl.hidden = false;
+  const r = el.getBoundingClientRect(), tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+  let x = r.left + r.width / 2 - tw / 2, y = r.top - th - 8;
+  if (y < 8) y = r.bottom + 8;
+  x = Math.max(8, Math.min(window.innerWidth - tw - 8, x));
+  tipEl.style.left = x + "px"; tipEl.style.top = y + "px";
+}
+const hideTip = () => { tipEl.hidden = true; };
+function withTip(el, id) {
+  el.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") showTip(id, el); });
+  el.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") hideTip(); });
+  el.addEventListener("pointerdown", () => showTip(id, el));          // touch: shows while you hold it
+  el.addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") setTimeout(hideTip, 1200); });
+  el.addEventListener("focus", () => showTip(id, el));
+  el.addEventListener("blur", hideTip);
+  return el;
+}
+window.addEventListener("scroll", hideTip, { passive: true });
+
+// ------------------------------------------------------------------ UI: knobs
+const controls = {};
+function arcPath(cx, cy, r, a0, a1) {
+  const p = (a) => [cx + r * Math.sin(a), cy - r * Math.cos(a)];
+  const [x0, y0] = p(a0), [x1, y1] = p(a1), large = Math.abs(a1 - a0) > Math.PI ? 1 : 0;
+  return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${large} ${a1 > a0 ? 1 : 0} ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+const A0 = (-135 * Math.PI) / 180, A1 = (135 * Math.PI) / 180;
+function knob(id, colour, { small = false, label } = {}) {
+  const p = SPEC[id];
+  const el = document.createElement("div");
+  el.className = "knob" + (small ? " small" : "");
+  el.tabIndex = 0;
+  el.setAttribute("role", "slider");
+  el.setAttribute("aria-label", label || p.label);
+  el.innerHTML = `<svg viewBox="0 0 56 56" aria-hidden="true">
+      <path class="track" style="fill:none;stroke:var(--rule);stroke-width:5"/>
+      <path class="val" style="fill:none;stroke:${colour};stroke-width:5"/>
+      <circle cx="28" cy="28" r="16.5" style="fill:var(--knob);stroke:var(--ink);stroke-width:1.5"/>
+      <line class="ptr" x1="28" y1="28" x2="28" y2="13" style="stroke:var(--ink);stroke-width:2.2;stroke-linecap:round"/>
+    </svg><div class="lab"></div>`;
+  $(".track", el).setAttribute("d", arcPath(28, 28, 24, A0, A1));
+  const lab = $(".lab", el), name = label || p.label;
+  let show = false;
+  const draw = () => {
+    const n = toNorm(p, values[id]), a = A0 + n * (A1 - A0), from = p.bipolar ? 0 : A0;
+    $(".val", el).setAttribute("d", Math.abs(a - from) < 0.01 ? "" : arcPath(28, 28, 24, Math.min(from, a), Math.max(from, a)));
+    $(".ptr", el).setAttribute("transform", `rotate(${(a * 180) / Math.PI} 28 28)`);
+    lab.textContent = show ? p.fmt(values[id]) : name;
+    el.classList.toggle("show", show);
+    el.setAttribute("aria-valuetext", p.fmt(values[id]));
+  };
+  const setShow = (v) => { show = v; draw(); };
+  let startY = 0, startN = 0, dragging = false;
+  el.addEventListener("pointerdown", (e) => {
+    dragging = true; startY = e.clientY; startN = toNorm(p, values[id]);
+    el.setPointerCapture(e.pointerId); setShow(true); e.preventDefault(); el.focus({ preventScroll: true });
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const sens = e.shiftKey ? 800 : 200;
+    setValue(id, fromNorm(p, startN + (startY - e.clientY) / sens));
+  });
+  const end = () => { dragging = false; setShow(el.matches(":hover") || document.activeElement === el); };
+  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+  el.addEventListener("pointerenter", () => setShow(true));
+  el.addEventListener("pointerleave", () => { if (!dragging) setShow(document.activeElement === el); });
+  el.addEventListener("focus", () => setShow(true)); el.addEventListener("blur", () => setShow(false));
+  el.addEventListener("dblclick", () => setValue(id, p.def));
+  el.addEventListener("keydown", (e) => {
+    const step = p.step ? p.step / (p.max - p.min) : e.shiftKey ? 0.002 : 0.02;
+    const map = { ArrowUp: step, ArrowRight: step, ArrowDown: -step, ArrowLeft: -step, PageUp: 0.1, PageDown: -0.1 };
+    if (e.key in map) { setValue(id, fromNorm(p, toNorm(p, values[id]) + map[e.key])); e.preventDefault(); e.stopPropagation(); }
+    else if (e.key === "Home") { setValue(id, p.def); e.preventDefault(); }
+  });
+  controls[id] = draw;
+  draw();
+  return withTip(el, id);
+}
+function segmented(id, labels) {
+  const el = document.createElement("div");
+  el.className = "seg"; el.setAttribute("role", "group"); el.setAttribute("aria-label", SPEC[id].label);
+  labels.forEach((t, i) => {
+    const b = document.createElement("button");
+    b.textContent = t; b.addEventListener("click", () => setValue(id, i));
+    el.append(b);
+  });
+  controls[id] = () => [...el.children].forEach((b, i) => b.setAttribute("aria-pressed", String(Math.round(values[id]) === i)));
+  controls[id]();
+  return withTip(el, id);
+}
+function toggle(id, text) {
+  const b = document.createElement("button");
+  b.className = "toggle"; b.innerHTML = `<i></i>${text}`;
+  b.addEventListener("click", () => setValue(id, values[id] > 0.5 ? 0 : 1));
+  controls[id] = () => b.setAttribute("aria-pressed", String(values[id] > 0.5));
+  controls[id]();
+  return withTip(b, id);
+}
+function refreshControl(id) {
+  controls[id]?.();
+  if (id === "model") $("#model").value = String(values.model);
+}
+
+function panel(title, colour, cls = "") {
+  const s = document.createElement("section");
+  s.className = "panel " + cls; s.style.setProperty("--c", colour);
+  s.innerHTML = `<h2>${title}</h2>`;
+  $("#panels").append(s);
+  return s;
+}
+function knobGrid(parent, ids, colour) {
+  const g = document.createElement("div"); g.className = "knobs";
+  for (const id of ids) g.append(knob(id, colour));
+  parent.append(g);
+  return g;
+}
+
+const C = { red: "var(--red)", blue: "var(--blue)", ochre: "var(--ochre)", ink: "var(--ink)" };
+knobGrid(panel("STRIKE", C.red), ["hardness", "velToHardness", "velSens", "strike"], C.red);
+knobGrid(panel("TONE", C.blue), ["brightness", "hum", "warble", "stretch", "character"], C.blue);
+{
+  const ring = panel("RING", C.ochre);
+  knobGrid(ring, ["decay", "damp", "sizeTrack", "release"], C.ochre);
+  ring.append(segmented("ringMode", ["Let ring", "Damp on release"]));
+}
+knobGrid(panel("PLAY", C.ink), ["transpose", "tune", "bendRange", "width", "rackSpread"], C.ink);
+
+// EQ panel
+const BANDS = [
+  { name: "LOW CUT", tag: "HP", f: "hpFreq", c: C.ink },
+  { name: "LOW", tag: "LS", f: "lsFreq", g: "lsGain", c: C.red },
+  { name: "BELL 1", tag: "1", f: "p1Freq", g: "p1Gain", q: "p1Q", c: C.ochre },
+  { name: "BELL 2", tag: "2", f: "p2Freq", g: "p2Gain", q: "p2Q", c: C.blue },
+  { name: "BELL 3", tag: "3", f: "p3Freq", g: "p3Gain", q: "p3Q", c: C.red },
+  { name: "HIGH", tag: "HS", f: "hsFreq", g: "hsGain", c: C.ochre },
+  { name: "HIGH CUT", tag: "LP", f: "lpFreq", c: C.ink },
+];
+{
+  const eqp = panel("EQ", C.ink, "eq");
+  const right = document.createElement("span"); right.className = "right"; right.append(toggle("eqOn", "On"));
+  $("h2", eqp).append(right);
+  const cv = document.createElement("canvas"); cv.id = "eqCanvas"; cv.setAttribute("aria-label", "EQ curve. Drag a dot to move a band.");
+  eqp.append(cv);
+  const bands = document.createElement("div"); bands.className = "eqbands";
+  for (const b of BANDS) {
+    const col = document.createElement("div"); col.className = "band"; col.style.setProperty("--bc", b.c);
+    col.innerHTML = `<h3>${b.name}</h3>`;
+    for (const id of [b.f, b.g, b.q].filter(Boolean)) col.append(knob(id, b.c, { small: true }));
+    bands.append(col);
+  }
+  eqp.append(bands);
+}
+knobGrid(panel("SPACE", C.blue, "space"), ["rvMix", "rvDecay", "rvSize", "rvDamp", "rvPredelay"], C.blue);
+{
+  const o = panel("OUTPUT", C.red, "out");
+  const g = document.createElement("div"); g.className = "knobs"; g.append(knob("outGain", C.red)); o.append(g);
+  o.append(toggle("limiter", "Safety limiter"));
+  o.insertAdjacentHTML("beforeend", `<div class="meter" aria-hidden="true"><div class="fill" id="mFill"></div><div class="hold" id="mHold"></div></div>
+    <div class="meter-scale" aria-hidden="true"><span>-48</span><span>-24</span><span>-12</span><span>-6</span><span>0</span></div>
+    <div class="readout" id="mText">Silent</div>`);
+}
+
+// ------------------------------------------------------------------ EQ curve (same maths as Source/Equalizer.h)
+function rbj(type, fs, f, q, gainDb) {
+  const w = (2 * Math.PI * f) / fs, c = Math.cos(w), s = Math.sin(w), A = Math.pow(10, gainDb / 40);
+  let b0, b1, b2, a0, a1, a2;
+  if (type === "peak") { const al = s / (2 * q); [b0, b1, b2, a0, a1, a2] = [1 + al * A, -2 * c, 1 - al * A, 1 + al / A, -2 * c, 1 - al / A]; }
+  else if (type === "hp" || type === "lp") {
+    const al = s / (2 * q);
+    if (type === "hp") [b0, b1, b2] = [(1 + c) / 2, -(1 + c), (1 + c) / 2]; else [b0, b1, b2] = [(1 - c) / 2, 1 - c, (1 - c) / 2];
+    [a0, a1, a2] = [1 + al, -2 * c, 1 - al];
+  } else {
+    const al = (s / 2) * Math.SQRT2, sA = 2 * Math.sqrt(A) * al, sg = type === "ls" ? 1 : -1;
+    b0 = A * (A + 1 - sg * (A - 1) * c + sA); b1 = sg * 2 * A * (A - 1 - sg * (A + 1) * c); b2 = A * (A + 1 - sg * (A - 1) * c - sA);
+    a0 = A + 1 + sg * (A - 1) * c + sA; a1 = -sg * 2 * (A - 1 + sg * (A + 1) * c); a2 = A + 1 + sg * (A - 1) * c - sA;
+  }
+  return [b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0];
+}
+function eqStages(fs) {
+  const v = values, on = v.eqOn > 0.5, st = [];
+  if (!on) return st;
+  if (v.hpFreq > 20.5) { st.push(rbj("hp", fs, v.hpFreq, 0.5412)); st.push(rbj("hp", fs, v.hpFreq, 1.3066)); }
+  if (Math.abs(v.lsGain) > 0.01) st.push(rbj("ls", fs, v.lsFreq, 0, v.lsGain));
+  for (const k of ["p1", "p2", "p3"]) if (Math.abs(v[k + "Gain"]) > 0.01) st.push(rbj("peak", fs, v[k + "Freq"], v[k + "Q"], v[k + "Gain"]));
+  if (Math.abs(v.hsGain) > 0.01) st.push(rbj("hs", fs, v.hsFreq, 0, v.hsGain));
+  if (v.lpFreq < 19990) st.push(rbj("lp", fs, v.lpFreq, 0.7071));
+  return st;
+}
+function magDb(st, f, fs) {
+  const w = (2 * Math.PI * f) / fs, cr = Math.cos(w), ci = -Math.sin(w), c2r = Math.cos(2 * w), c2i = -Math.sin(2 * w);
+  let m = 1;
+  for (const [b0, b1, b2, a1, a2] of st) {
+    const nr = b0 + b1 * cr + b2 * c2r, ni = b1 * ci + b2 * c2i, dr = 1 + a1 * cr + a2 * c2r, di = a1 * ci + a2 * c2i;
+    m *= Math.sqrt((nr * nr + ni * ni) / (dr * dr + di * di));
+  }
+  return 20 * Math.log10(Math.max(m, 1e-9));
+}
+const eqCanvas = $("#eqCanvas");
+const EQ_DB = 18;
+let eqHover = -1, eqDrag = -1, spectrum = null;
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const fx = (f, w) => (w * Math.log(f / 20)) / Math.log(1000);
+const xf = (x, w) => 20 * Math.pow(1000, x / w);
+const dy = (d, h) => (h / 2) * (1 - d / EQ_DB);
+const yd = (y, h) => EQ_DB * (1 - (2 * y) / h);
+function handle(i, w, h) { const b = BANDS[i]; return [Math.min(w - 9, Math.max(9, fx(values[b.f], w))), dy(b.g ? values[b.g] : 0, h)]; }
+function drawEq() {
+  const dpr = window.devicePixelRatio || 1, w = eqCanvas.clientWidth, h = eqCanvas.clientHeight;
+  if (!w) return;
+  if (eqCanvas.width !== Math.round(w * dpr)) { eqCanvas.width = Math.round(w * dpr); eqCanvas.height = Math.round(h * dpr); }
+  const g = eqCanvas.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const ink = css("--ink"), rule = css("--rule"), muted = css("--muted"), fs = ctx ? ctx.sampleRate : 48000;
+  if (spectrum) {
+    g.beginPath(); g.moveTo(0, h);
+    const binHz = fs / (spectrum.length * 2);
+    for (let x = 0; x <= w; x += 2) {
+      const b0 = Math.max(1, Math.floor(xf(x, w) / binHz)), b1 = Math.max(b0, Math.floor(xf(x + 2, w) / binHz));
+      let d = -140; for (let b = b0; b <= b1 && b < spectrum.length; b++) d = Math.max(d, spectrum[b]);
+      const t = (Math.min(-6, Math.max(-100, d)) + 100) / 94;
+      g.lineTo(x, h - t * h * 0.92);
+    }
+    g.lineTo(w, h); g.closePath(); g.globalAlpha = 0.55; g.fillStyle = rule; g.fill(); g.globalAlpha = 1;
+  }
+  g.font = "10.5px " + css("--font-data"); g.lineWidth = 1;
+  for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
+    const x = Math.round(fx(f, w)) + 0.5; g.strokeStyle = rule; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
+    g.fillStyle = muted; g.fillText(f >= 1000 ? f / 1000 + "k" : String(f), x + 3, h - 4);
+  }
+  for (const d of [-12, -6, 0, 6, 12]) {
+    const y = Math.round(dy(d, h)) + 0.5; g.strokeStyle = d === 0 ? muted : rule; g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+    if (d) { g.fillStyle = muted; g.fillText((d > 0 ? "+" : "") + d, 4, y - 3); }
+  }
+  const st = eqStages(fs), on = values.eqOn > 0.5;
+  g.beginPath();
+  for (let x = 0; x <= w; x++) { const y = Math.min(h + 2, Math.max(-2, dy(magDb(st, xf(x, w), fs), h))); x ? g.lineTo(x, y) : g.moveTo(x, y); }
+  g.strokeStyle = on ? ink : muted; g.lineWidth = on ? 2.25 : 1.5; g.stroke();
+  BANDS.forEach((b, i) => {
+    const [x, y] = handle(i, w, h), r = i === eqHover || i === eqDrag ? 9 : 7.5;
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2);
+    g.fillStyle = on ? css(b.c.slice(4, -1)) : muted; g.fill(); g.strokeStyle = ink; g.lineWidth = 1.25; g.stroke();
+    g.fillStyle = b.c === C.ochre ? "#191817" : css("--paper");
+    g.font = `700 ${b.tag.length > 1 ? 8.5 : 10}px ` + css("--font-body"); g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(b.tag, x, y + 0.5); g.textAlign = "start"; g.textBaseline = "alphabetic";
+  });
+}
+function bandAt(e) {
+  const r = eqCanvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  let best = -1, bd = 14;
+  BANDS.forEach((_, i) => { const [hx, hy] = handle(i, r.width, r.height), d = Math.hypot(hx - x, hy - y); if (d < bd) { bd = d; best = i; } });
+  return best;
+}
+eqCanvas.addEventListener("pointerdown", (e) => { eqDrag = bandAt(e); if (eqDrag >= 0) { eqCanvas.setPointerCapture(e.pointerId); e.preventDefault(); } });
+eqCanvas.addEventListener("pointermove", (e) => {
+  const r = eqCanvas.getBoundingClientRect();
+  if (eqDrag >= 0) {
+    const b = BANDS[eqDrag];
+    setValue(b.f, xf(Math.min(r.width, Math.max(0, e.clientX - r.left)), r.width));
+    if (b.g) setValue(b.g, Math.max(-EQ_DB, Math.min(EQ_DB, yd(e.clientY - r.top, r.height))));
+  } else {
+    const hv = bandAt(e);
+    if (hv !== eqHover) { eqHover = hv; eqCanvas.style.cursor = hv >= 0 ? "grab" : "default"; drawEq(); }
+  }
+});
+const eqEnd = () => { eqDrag = -1; drawEq(); };
+eqCanvas.addEventListener("pointerup", eqEnd); eqCanvas.addEventListener("pointercancel", eqEnd);
+eqCanvas.addEventListener("dblclick", (e) => { const i = bandAt(e); if (i >= 0) { const b = BANDS[i]; b.g ? setValue(b.g, 0) : setValue(b.f, SPEC[b.f].def); } });
+eqCanvas.addEventListener("wheel", (e) => {
+  const i = bandAt(e); if (i < 0 || !BANDS[i].q) return;
+  e.preventDefault(); setValue(BANDS[i].q, values[BANDS[i].q] * Math.exp(-e.deltaY * 0.004));
+}, { passive: false });
+new ResizeObserver(drawEq).observe(eqCanvas);
+
+// meter
+let hold = 0, holdT = 0;
+function meter({ peak, reductionDb }) {
+  const toPct = (g) => Math.max(0, Math.min(100, ((20 * Math.log10(Math.max(g, 1e-6)) + 48) / 48) * 100));
+  if (peak >= hold) { hold = peak; holdT = performance.now(); } else if (performance.now() - holdT > 1500) hold *= 0.9;
+  $("#mFill").style.width = toPct(peak) + "%";
+  $("#mHold").style.left = `calc(${toPct(hold)}% - 1px)`;
+  const t = $("#mText");
+  if (reductionDb < -0.1) { t.textContent = "Limiting " + reductionDb.toFixed(1) + " dB"; t.classList.add("hot"); }
+  else { t.textContent = hold > 1e-5 ? "Peak " + (20 * Math.log10(hold)).toFixed(1) + " dBFS" : "Silent"; t.classList.remove("hot"); }
+}
+function frame() {
+  if (nodes) {
+    spectrum = spectrum || new Float32Array(nodes.analyser.frequencyBinCount);
+    nodes.analyser.getFloatFrequencyData(spectrum);
+    drawEq();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ------------------------------------------------------------------ keyboard
+const keysEl = $("#keys");
+let base = store.get("base", 60), octaves = 2;
+const held = new Map();                 // source -> note
+const down = new Map();                 // note -> count of sources holding it
+const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const isBlack = (n) => [1, 3, 6, 8, 10].includes(n % 12);
+// Notes follow physical key positions (KeyboardEvent.code), so the layout is the same shape on any keyboard.
+// Labels default to AZERTY; where the browser can read the real layout, it uses that instead.
+const COMPUTER = { KeyA: 0, KeyW: 1, KeyS: 2, KeyE: 3, KeyD: 4, KeyF: 5, KeyT: 6, KeyG: 7, KeyY: 8, KeyH: 9, KeyU: 10, KeyJ: 11,
+                   KeyK: 12, KeyO: 13, KeyL: 14, KeyP: 15, Semicolon: 16, Quote: 17 };
+const OCT_DOWN = "KeyZ", OCT_UP = "KeyX";
+const AZERTY = { KeyA: "Q", KeyW: "Z", KeyS: "S", KeyE: "E", KeyD: "D", KeyF: "F", KeyT: "T", KeyG: "G", KeyY: "Y", KeyH: "H", KeyU: "U",
+                 KeyJ: "J", KeyK: "K", KeyO: "O", KeyL: "L", KeyP: "P", Semicolon: "M", Quote: "\u00d9", KeyZ: "W", KeyX: "X" };
+let keyLabel = { ...AZERTY };
+let LETTER_FOR = {};
+function relabel() {
+  LETTER_FOR = Object.fromEntries(Object.entries(COMPUTER).map(([code, v]) => [v, keyLabel[code]]));
+  const h = $("#octHint"); if (h) h.textContent = `${keyLabel[OCT_DOWN]} / ${keyLabel[OCT_UP]} shift octave.`;
+}
+relabel();
+navigator.keyboard?.getLayoutMap?.().then((map) => {
+  const real = {};
+  for (const code of [...Object.keys(COMPUTER), OCT_DOWN, OCT_UP]) { const ch = map.get(code); if (ch) real[code] = ch.toUpperCase(); }
+  if (Object.keys(real).length) { keyLabel = { ...AZERTY, ...real }; relabel(); buildKeys(); }
+}).catch(() => {});
+
+function buildKeys() {
+  // As many white keys as fit: about C4-G5 on a phone (a full set of tubular bells), four octaves on a laptop.
+  const w = keysEl.clientWidth || 800;
+  const count = Math.max(8, Math.min(29, Math.floor(w / (w < 520 ? 26 : 38))));
+  base = Math.max(24, Math.min(96, base));
+  keysEl.innerHTML = "";
+  const whites = [];
+  for (let n = base; whites.length < count; n++) if (!isBlack(n)) whites.push(n);
+  const top = whites[whites.length - 1];
+  octaves = (top - base) / 12;
+  const ww = 100 / whites.length;
+  for (const n of whites) {
+    const k = document.createElement("div");
+    k.className = "key-w"; k.dataset.note = n;
+    if (n % 12 === 0) k.innerHTML = `<span class="c">${NAMES[0]}${Math.floor(n / 12) - 1}</span>`;
+    const l = LETTER_FOR[n - base]; if (l) k.insertAdjacentHTML("beforeend", `<span class="kl">${l}</span>`);
+    keysEl.append(k);
+  }
+  whites.forEach((n, i) => {
+    if (n + 1 <= top && isBlack(n + 1)) {
+      const k = document.createElement("div");
+      k.className = "key-b"; k.dataset.note = n + 1;
+      k.style.left = `calc(${(i + 1) * ww}% - ${ww * 0.3}%)`; k.style.width = ww * 0.6 + "%";
+      const l = LETTER_FOR[n + 1 - base]; if (l) k.innerHTML = `<span class="kl">${l}</span>`;
+      keysEl.append(k);
+    }
+  });
+  for (const n of down.keys()) keyEl(n)?.classList.add("down");
+  const name = (n) => NAMES[n % 12] + (Math.floor(n / 12) - 1);
+  $("#range").textContent = name(base) + "\u2013" + name(top);
+  store.set("base", base);
+}
+const keyEl = (n) => keysEl.querySelector(`[data-note="${n}"]`);
+
+function press(source, note, velocity) {
+  release(source);
+  held.set(source, note);
+  down.set(note, (down.get(note) || 0) + 1);
+  keyEl(note)?.classList.add("down");
+  send({ type: "on", note, velocity });
+}
+function release(source) {
+  const note = held.get(source);
+  if (note == null) return;
+  held.delete(source);
+  const c = (down.get(note) || 1) - 1;
+  if (c <= 0) { down.delete(note); keyEl(note)?.classList.remove("down"); send({ type: "off", note }); }
+  else down.set(note, c);
+}
+
+function velocityFromPointer(e, el) {
+  const r = el.getBoundingClientRect();
+  const t = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+  return 0.25 + 0.75 * t;   // nearer the front edge = harder strike
+}
+keysEl.addEventListener("pointerdown", (e) => {
+  const k = e.target.closest("[data-note]"); if (!k) return;
+  e.preventDefault(); keysEl.setPointerCapture(e.pointerId);
+  press("p" + e.pointerId, +k.dataset.note, velocityFromPointer(e, k));
+});
+keysEl.addEventListener("pointermove", (e) => {
+  const src = "p" + e.pointerId; if (!held.has(src)) return;
+  const k = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("[data-note]");
+  if (k && +k.dataset.note !== held.get(src)) press(src, +k.dataset.note, velocityFromPointer(e, k));   // glissando
+});
+for (const ev of ["pointerup", "pointercancel"]) keysEl.addEventListener(ev, (e) => release("p" + e.pointerId));
+
+// computer keyboard
+let pedalDown = false;
+function setPedal(v) {
+  if (v === pedalDown) return;
+  pedalDown = v; $("#pedal").setAttribute("aria-pressed", String(v));
+  send({ type: "sustain", down: v });
+}
+const typing = (e) => e.target.closest?.("select, input, textarea");
+window.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || typing(e)) return;
+  const k = e.code;
+  if (k === "Space") { e.preventDefault(); if (!e.repeat) setPedal(true); return; }
+  if (e.repeat) { if (k in COMPUTER) e.preventDefault(); return; }
+  if (k === OCT_DOWN) { shiftOctave(-1); return; }
+  if (k === OCT_UP) { shiftOctave(1); return; }
+  if (k in COMPUTER) { e.preventDefault(); press("k" + k, base + COMPUTER[k], 0.78); }
+});
+window.addEventListener("keyup", (e) => {
+  const k = e.code;
+  if (k === "Space") { e.preventDefault(); setPedal(false); return; }
+  if (k in COMPUTER) release("k" + k);
+});
+window.addEventListener("blur", () => { for (const s of [...held.keys()]) release(s); setPedal(false); });
+function shiftOctave(d) { base += 12 * d; buildKeys(); }
+$("#octDown").addEventListener("click", () => shiftOctave(-1));
+$("#octUp").addEventListener("click", () => shiftOctave(1));
+const pedalBtn = $("#pedal");
+pedalBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); setPedal(!pedalDown); });
+pedalBtn.addEventListener("keydown", (e) => { if (e.key === "Enter") setPedal(!pedalDown); });
+new ResizeObserver(() => buildKeys()).observe(keysEl);
+
+// ------------------------------------------------------------------ MIDI
+async function initMidi() {
+  const chip = $("#midiChip"), text = $("#midiText");
+  if (!navigator.requestMIDIAccess) { text.textContent = "No Web MIDI in this browser"; return; }
+  try {
+    const access = await navigator.requestMIDIAccess();
+    const update = () => {
+      const ins = [...access.inputs.values()].filter((i) => i.state === "connected");
+      ins.forEach((i) => (i.onmidimessage = onMidi));
+      chip.classList.toggle("live", ins.length > 0);
+      text.textContent = ins.length ? ins.map((i) => i.name).join(", ") : "No MIDI keyboard connected";
+    };
+    access.onstatechange = update; update();
+  } catch { text.textContent = "MIDI blocked here"; }
+}
+function onMidi({ data }) {
+  const [st, d1, d2 = 0] = data, cmd = st & 0xf0;
+  if (cmd === 0x90 && d2 > 0) press("m" + d1, d1, d2 / 127);
+  else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) release("m" + d1);
+  else if (cmd === 0xb0 && d1 === 64) setPedal(d2 >= 64);
+  else if (cmd === 0xb0 && d1 === 120) send({ type: "panic" });
+  else if (cmd === 0xb0 && d1 === 123) send({ type: "allOff" });
+  else if (cmd === 0xe0) send({ type: "bend", value: ((d2 << 7) + d1 - 8192) / 8192 });
+  else if (cmd === 0xc0 && d1 < PRESETS.length) applyPreset(d1);
+}
+
+// ------------------------------------------------------------------ header wiring
+PRESETS.forEach(([name], i) => $("#preset").add(new Option(name, String(i))));
+MODEL_NAMES.forEach((n, i) => $("#model").add(new Option(n, String(i))));
+$("#preset").addEventListener("change", (e) => { applyPreset(+e.target.value); e.target.blur(); });
+$("#prev").addEventListener("click", () => applyPreset(+$("#preset").value - 1));
+$("#next").addEventListener("click", () => applyPreset(+$("#preset").value + 1));
+$("#model").addEventListener("change", (e) => { setValue("model", +e.target.value); e.target.blur(); });
+$("#panic").addEventListener("click", () => { for (const s of [...held.keys()]) release(s); send({ type: "panic" }); });
+document.addEventListener("pointerdown", () => start(), { once: true, capture: true });
+document.addEventListener("keydown", () => start(), { once: true, capture: true });
+
+applyPreset(Math.min(PRESETS.length - 1, Math.max(0, store.get("preset", 0) | 0)));
+buildKeys();
+drawEq();
+initMidi();
+</script>
+
+</html>
