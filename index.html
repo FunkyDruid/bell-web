@@ -281,6 +281,7 @@ const PARAMS = [
   P("rvSize", "Size", 0, 1, 0.6, pct), P("rvDamp", "Damping", 0, 1, 0.4, pct),
   P("rvPredelay", "Pre-delay", 0, 150, 18, (v) => Math.round(v) + " ms"),
   P("outGain", "Output", -30, 12, 0, db, { bipolar: true }), P("limiter", "Safety limiter", 0, 1, 1, String, { step: 1 }),
+  P("loudness", "Loudness", 0, 24, 0, (v) => "+" + v.toFixed(1) + " dB"), P("mono", "Mono", 0, 1, 0, String, { step: 1 }),
 ];
 const SPEC = Object.fromEntries(PARAMS.map((p) => [p.id, p]));
 for (const p of PARAMS) if (p.centre != null) p.skew = Math.log(0.5) / Math.log((p.centre - p.min) / (p.max - p.min));
@@ -326,6 +327,8 @@ const PRESETS = [
   ["Handbells - Dry", { model: 2, hardness: 0.65, strike: 2, width: 0.6, rackSpread: 0.5, rvMix: 0.08, rvDecay: 0.9, rvSize: 0.2, outGain: 3 }],
   ["Glockenspiel - Dry Brass", { model: 3, hardness: 0.95, strike: 4, rvMix: 0.06, rvDecay: 0.8, rvSize: 0.15 }],
   ["Crotales - Dry", { model: 5, hardness: 0.92, strike: 3, rvMix: 0.08, rvDecay: 0.9, rvSize: 0.2 }],
+  ["Tubular Bells - Amp Loud & Clean", { model: 1, hardness: 0.7, strike: -2, hum: -6, width: 0, rackSpread: 0, mono: 1, loudness: 17, hpFreq: 140, rvMix: 0.12, rvDecay: 1.4, rvSize: 0.35 }],
+  ["Tubular Bells - Amp Dry", { model: 1, hardness: 0.85, strike: 2, hum: -6, width: 0, rackSpread: 0, mono: 1, loudness: 18, hpFreq: 140, rvMix: 0.04, rvDecay: 0.8, rvSize: 0.15 }],
 ];
 
 // ------------------------------------------------------------------ audio graph
@@ -394,6 +397,8 @@ function applyOut() {
   if (!nodes) return;
   nodes.out.gain.setTargetAtTime(Math.pow(10, values.outGain / 20), ctx.currentTime, 0.02);
   nodes.limiter.port.postMessage({ type: "on", on: values.limiter > 0.5 });
+  nodes.limiter.port.postMessage({ type: "drive", db: values.loudness });
+  nodes.limiter.port.postMessage({ type: "mono", on: values.mono > 0.5 });
 }
 function applyEq() {
   if (!nodes) return;
@@ -503,7 +508,7 @@ function setValue(id, v, { silent = false } = {}) {
   if (id === "rvMix") applyMix();
   if (id.startsWith("rv") && id !== "rvMix") rebuildIR(false);
   if (/^(eqOn|hp|ls|p[123]|hs|lp)/.test(id)) { applyEq(); drawEq(); }
-  if (id === "outGain" || id === "limiter") applyOut();
+  if (id === "outGain" || id === "limiter" || id === "loudness" || id === "mono") applyOut();
 }
 
 // Presets: factory ones are fixed; yours live in this browser. Both share one JSON format with the plugin:
@@ -728,7 +733,9 @@ const TIPS = {
   rvDamp: ["The tail darkens quickly, like a soft hall.", "Brighter tail, like stone."],
   rvPredelay: ["A gap before the reverb keeps the strike clear.", "The reverb starts right with the strike."],
   outGain: ["Louder output.", "Quieter output."],
-  limiter: { title: "Safety limiter", rows: [["On", "Catches peaks above -1 dBFS so nothing clips."], ["Off", "No protection."]] },
+  loudness: ["Louder ring at the same peak level: strike spikes are trimmed (2 ms lookahead) so the amp can go up before it clips. Needs the limiter on.", "More natural, spikier attack. 0 is off."],
+  mono: { title: "Mono", rows: [["On", "Left and right summed before the limiter. Use it for a mono amp so peaks don't jump when the amp adds the sides."], ["Off", "Stereo."]] },
+  limiter: { title: "Safety limiter", rows: [["On", "Catches peaks above -1 dBFS so nothing clips. Loudness needs it."], ["Off", "No protection; Loudness does nothing."]] },
   eqOn: { title: "EQ", rows: [["On", "The EQ shapes the sound."], ["Off", "Bypassed: the bell as it comes out of the engine."]] },
 };
 const BAND_OF = { hpFreq: "Low cut", lsFreq: "Low shelf", lsGain: "Low shelf", hsFreq: "High shelf", hsGain: "High shelf", lpFreq: "High cut",
@@ -898,8 +905,8 @@ const BANDS = [
 knobGrid(panel("SPACE", C.blue, "space"), ["rvMix", "rvDecay", "rvSize", "rvDamp", "rvPredelay"], C.blue);
 {
   const o = panel("OUTPUT", C.red, "out");
-  const g = document.createElement("div"); g.className = "knobs"; g.append(knob("outGain", C.red)); o.append(g);
-  o.append(toggle("limiter", "Safety limiter"));
+  const g = document.createElement("div"); g.className = "knobs"; g.append(knob("outGain", C.red), knob("loudness", C.red)); o.append(g);
+  o.append(toggle("limiter", "Safety limiter"), toggle("mono", "Mono"));
   o.insertAdjacentHTML("beforeend", `<div class="meter" aria-hidden="true"><div class="fill" id="mFill"></div><div class="hold" id="mHold"></div></div>
     <div class="meter-scale" aria-hidden="true"><span>-48</span><span>-24</span><span>-12</span><span>-6</span><span>0</span></div>
     <div class="readout" id="mText">Silent</div>`);

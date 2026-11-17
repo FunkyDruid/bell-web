@@ -372,35 +372,53 @@ if (typeof registerProcessor === "function") {
   }
   registerProcessor("bell-engine", BellProcessor);
 
-  // Safety limiter: -1 dBFS ceiling, 0.3 ms attack, 150 ms release, soft clip above 0.9.
+  // Loudness limiter: port of Source/LoudnessLimiter.h. Drive in, 2 ms lookahead, ceiling -1 dBFS,
+  // gain = moving average (over L+1) of the moving minimum (over L+1) of each sample's need, applied
+  // to the signal delayed by L: the ceiling is never crossed and the gain never jumps.
   class LimiterProcessor extends AudioWorkletProcessor {
     constructor() {
       super();
-      this.gain = 1; this.on = true; this.peak = 0; this.minGain = 1; this.counter = 0;
-      this.attack = 1 - Math.exp(-1 / (0.0003 * sampleRate));
-      this.release = 1 - Math.exp(-1 / (0.15 * sampleRate));
-      this.port.onmessage = ({ data }) => { if (data.type === "on") this.on = data.on; };
+      this.on = true; this.driveDb = 0; this.mono = false;
+      this.L = Math.max(1, Math.round(0.002 * sampleRate));
+      const len = this.L + 1;
+      this.dl = [new Float32Array(this.L), new Float32Array(this.L)]; this.w = 0;
+      this.eRing = new Float64Array(len).fill(1); this.eSum = len; this.eIdx = 0;
+      this.dqPos = new Float64Array(len + 1); this.dqVal = new Float32Array(len + 1); this.dqH = 0; this.dqT = 0; this.n = 0;
+      this.gain = 1; this.rel = 1 - Math.exp(-1 / (0.08 * sampleRate));
+      this.drive = 1; this.driveCoef = 1 - Math.exp(-1 / (0.02 * sampleRate));
+      this.peak = 0; this.minGain = 1; this.counter = 0;
+      this.port.onmessage = ({ data }) => {
+        if (data.type === "on") this.on = data.on;
+        if (data.type === "drive") this.driveDb = data.db;
+        if (data.type === "mono") this.mono = data.on;
+      };
     }
     process(inputs, outputs) {
       const inp = inputs[0], out = outputs[0];
-      if (!inp.length) return true;
-      const n = out[0].length, chans = Math.min(inp.length, out.length);
+      const n = out[0].length, L = this.L, len = L + 1, cap = len + 1, C = 0.891;
+      const inL = inp[0] || new Float32Array(n), inR = inp[1] || inL;
+      const target = this.on ? Math.pow(10, this.driveDb / 20) : 1;
       for (let i = 0; i < n; ++i) {
-        let pk = 0;
-        for (let c = 0; c < chans; ++c) pk = Math.max(pk, Math.abs(inp[c][i]));
-        if (this.on) {
-          const target = pk > 0.891 ? 0.891 / pk : 1;
-          this.gain += (target - this.gain) * (target < this.gain ? this.attack : this.release);
-          if (this.gain < this.minGain) this.minGain = this.gain;
-        } else this.gain = 1;
-        for (let c = 0; c < chans; ++c) {
-          let v = inp[c][i] * this.gain;
-          const a = Math.abs(v);
-          if (this.on && a > 0.9) v = Math.sign(v) * (0.9 + 0.1 * Math.tanh((a - 0.9) / 0.1));
-          out[c][i] = v;
-          if (Math.abs(v) > this.peak) this.peak = Math.abs(v);
-        }
+        this.drive += (target - this.drive) * this.driveCoef;
+        let l = inL[i] * this.drive, r = inR[i] * this.drive;
+        if (this.mono) l = r = 0.5 * (l + r);
+        const pk = Math.max(Math.abs(l), Math.abs(r));
+        const need = this.on && pk > C ? C / pk : 1;
+        while (this.dqH !== this.dqT && this.dqVal[(this.dqT + cap - 1) % cap] >= need) this.dqT = (this.dqT + cap - 1) % cap;
+        this.dqPos[this.dqT] = this.n; this.dqVal[this.dqT] = need; this.dqT = (this.dqT + 1) % cap;
+        while (this.dqPos[this.dqH] <= this.n - len) this.dqH = (this.dqH + 1) % cap;
+        const e = this.dqVal[this.dqH];
+        this.eSum += e - this.eRing[this.eIdx]; this.eRing[this.eIdx] = e; this.eIdx = (this.eIdx + 1) % len;
+        this.gain = Math.min(this.eSum / len, this.gain + (1 - this.gain) * this.rel);
+        if (this.gain < this.minGain) this.minGain = this.gain;
+        const oL = this.dl[0][this.w], oR = this.dl[1][this.w];
+        this.dl[0][this.w] = l; this.dl[1][this.w] = r; this.w = (this.w + 1) % L;
+        const a = oL * this.gain, b = oR * this.gain;
+        out[0][i] = a; if (out[1]) out[1][i] = b;
+        const m = Math.max(Math.abs(a), Math.abs(b)); if (m > this.peak) this.peak = m;
+        ++this.n;
       }
+      if (this.n % 65536 < n) { this.eSum = 0; for (const v of this.eRing) this.eSum += v; }
       if (++this.counter % 8 === 0) {
         this.port.postMessage({ type: "meter", peak: this.peak, reductionDb: 20 * Math.log10(this.minGain) });
         this.peak = 0; this.minGain = 1;
