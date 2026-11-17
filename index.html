@@ -76,6 +76,12 @@ select { background: var(--paper); border: 1.5px solid var(--ink); border-radius
 .key-w:last-child { border-right-width: 1.5px; }
 .key-b { position: absolute; top: 0; height: 60%; background: var(--key-black); border: 1.5px solid var(--ink); z-index: 2; display: flex; align-items: end; justify-content: center; padding-bottom: 6px; }
 .key-w.down, .key-b.down { background: var(--key-down); }
+.key-w.pick, .key-b.pick { box-shadow: inset 0 0 0 3px var(--blue); }
+.keyedit { border: 1.5px solid var(--blue); background: var(--paper); padding: 10px 12px; display: grid; gap: 10px; }
+.keyedit p { margin: 0; font-size: 13px; }
+.keyedit-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
+.btn.bind { min-width: 72px; font-family: var(--font-data); }
+.btn.bind.waiting { border-color: var(--blue); color: var(--blue); }
 .key-w .c { position: absolute; left: 0; right: 0; bottom: 30px; text-align: center; font-family: var(--font-data); font-size: 10px; color: var(--muted); }
 .kl { font-family: var(--font-data); font-size: 11px; color: var(--key-label); pointer-events: none; }
 .key-b .kl { color: #8a8376; }
@@ -202,9 +208,24 @@ footer { font-size: 12.5px; color: var(--muted); max-width: 70ch; line-height: 1
         <span class="range" id="range">C4</span>
         <button class="btn" id="octUp" aria-label="Octave up">+</button>
       </div>
-      <button class="btn" id="pedal" aria-pressed="false">Pedal <span class="desk-only kl" style="color:inherit">&nbsp;space</span></button>
+      <button class="btn" id="pedal" aria-pressed="false">Pedal <span class="desk-only kl" id="pedalKey" style="color:inherit">&nbsp;space</span></button>
+      <button class="btn desk-only" id="editKeys" aria-pressed="false">Edit keys</button>
       <span class="hint">Strike lower on a key to play louder.</span>
       <span class="hint desk-only" id="octHint">W / X shift octave.</span>
+    </div>
+    <div class="keyedit" id="keyEdit" hidden>
+      <p id="keyEditStatus">Click a note on the piano, then press the computer key you want for it. Backspace removes its key, Esc stops.</p>
+      <div class="keyedit-row">
+        <label class="field"><span>Start from</span><select id="layoutSel" aria-label="Start from layout">
+          <option value="azerty">AZERTY</option><option value="qwerty">QWERTY</option><option value="qwertz">QWERTZ</option></select></label>
+        <div class="field"><span>Octave down</span><button class="btn bind" data-action="octDown"></button></div>
+        <div class="field"><span>Octave up</span><button class="btn bind" data-action="octUp"></button></div>
+        <div class="field"><span>Pedal</span><button class="btn bind" data-action="pedal"></button></div>
+        <div class="spacer"></div>
+        <button class="btn" id="clearKeys">Clear all</button>
+        <button class="btn" id="resetKeys">Reset</button>
+        <button class="btn primary" id="doneKeys">Done</button>
+      </div>
     </div>
     <div class="keys" id="keys"></div>
   </section>
@@ -1027,25 +1048,106 @@ const held = new Map();                 // source -> note
 const down = new Map();                 // note -> count of sources holding it
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const isBlack = (n) => [1, 3, 6, 8, 10].includes(n % 12);
-// Notes follow physical key positions (KeyboardEvent.code), so the layout is the same shape on any keyboard.
-// Labels default to AZERTY; where the browser can read the real layout, it uses that instead.
-const COMPUTER = { KeyA: 0, KeyW: 1, KeyS: 2, KeyE: 3, KeyD: 4, KeyF: 5, KeyT: 6, KeyG: 7, KeyY: 8, KeyH: 9, KeyU: 10, KeyJ: 11,
-                   KeyK: 12, KeyO: 13, KeyL: 14, KeyP: 15, Semicolon: 16, Quote: 17 };
-const OCT_DOWN = "KeyZ", OCT_UP = "KeyX";
-const AZERTY = { KeyA: "Q", KeyW: "Z", KeyS: "S", KeyE: "E", KeyD: "D", KeyF: "F", KeyT: "T", KeyG: "G", KeyY: "Y", KeyH: "H", KeyU: "U",
-                 KeyJ: "J", KeyK: "K", KeyO: "O", KeyL: "L", KeyP: "P", Semicolon: "M", Quote: "\u00d9", KeyZ: "W", KeyX: "X" };
-let keyLabel = { ...AZERTY };
+// Computer-key layout. Keys are matched by physical position (KeyboardEvent.code) and shown with the
+// letter printed on them. The layout is editable (Edit keys) and saved in this browser.
+const DEFAULT_NOTES = { KeyA: 0, KeyW: 1, KeyS: 2, KeyE: 3, KeyD: 4, KeyF: 5, KeyT: 6, KeyG: 7, KeyY: 8, KeyH: 9, KeyU: 10, KeyJ: 11,
+                        KeyK: 12, KeyO: 13, KeyL: 14, KeyP: 15, Semicolon: 16, Quote: 17 };
+const LABEL_SETS = {
+  azerty: { KeyA: "Q", KeyW: "Z", KeyS: "S", KeyE: "E", KeyD: "D", KeyF: "F", KeyT: "T", KeyG: "G", KeyY: "Y", KeyH: "H", KeyU: "U",
+            KeyJ: "J", KeyK: "K", KeyO: "O", KeyL: "L", KeyP: "P", Semicolon: "M", Quote: "Ù", KeyZ: "W", KeyX: "X" },
+  qwerty: { KeyA: "A", KeyW: "W", KeyS: "S", KeyE: "E", KeyD: "D", KeyF: "F", KeyT: "T", KeyG: "G", KeyY: "Y", KeyH: "H", KeyU: "U",
+            KeyJ: "J", KeyK: "K", KeyO: "O", KeyL: "L", KeyP: "P", Semicolon: ";", Quote: "'", KeyZ: "Z", KeyX: "X" },
+};
+LABEL_SETS.qwertz = { ...LABEL_SETS.qwerty, KeyY: "Z", KeyZ: "Y", Semicolon: "Ö", Quote: "Ä" };
+const defaultKeymap = (layout = "azerty") =>
+  ({ layout, notes: { ...DEFAULT_NOTES }, labels: { ...LABEL_SETS[layout] }, octDown: "KeyZ", octUp: "KeyX", pedal: "Space" });
+let keymap = (() => {
+  const k = store.get("keymap", null);
+  return k && typeof k.notes === "object" && k.labels && k.octDown && k.octUp && k.pedal ? k : defaultKeymap();
+})();
+let realLabels = {};                                  // from the browser's layout map, when it shares one
+const prettyCode = (c) => c === "Space" ? "Space" : c.replace(/^Key/, "").replace(/^Digit/, "").replace(/^Numpad/, "Num ");
+const labelOf = (code) => realLabels[code] || keymap.labels[code] || prettyCode(code);
 let LETTER_FOR = {};
 function relabel() {
-  LETTER_FOR = Object.fromEntries(Object.entries(COMPUTER).map(([code, v]) => [v, keyLabel[code]]));
-  const h = $("#octHint"); if (h) h.textContent = `${keyLabel[OCT_DOWN]} / ${keyLabel[OCT_UP]} shift octave.`;
+  LETTER_FOR = {};
+  for (const [code, off] of Object.entries(keymap.notes)) LETTER_FOR[off] = LETTER_FOR[off] ? LETTER_FOR[off] + "/" + labelOf(code) : labelOf(code);
+  const h = $("#octHint"); if (h) h.textContent = `${labelOf(keymap.octDown)} / ${labelOf(keymap.octUp)} shift octave.`;
+  const pk = $("#pedalKey"); if (pk) pk.textContent = " " + labelOf(keymap.pedal).toLowerCase();
+  document.querySelectorAll(".bind").forEach((b) => { if (!b.classList.contains("waiting")) b.textContent = labelOf(keymap[b.dataset.action]); });
 }
+function saveKeymap() { store.set("keymap", keymap); relabel(); buildKeys(); }
 relabel();
 navigator.keyboard?.getLayoutMap?.().then((map) => {
-  const real = {};
-  for (const code of [...Object.keys(COMPUTER), OCT_DOWN, OCT_UP]) { const ch = map.get(code); if (ch) real[code] = ch.toUpperCase(); }
-  if (Object.keys(real).length) { keyLabel = { ...AZERTY, ...real }; relabel(); buildKeys(); }
+  for (const [code, ch] of map) if (ch && ch.trim()) realLabels[code] = ch.toUpperCase();
+  if (Object.keys(realLabels).length) $("#layoutSel").closest(".field").hidden = true;   // the browser knows the real letters
+  relabel(); buildKeys();
 }).catch(() => {});
+
+// ---- Edit keys mode
+let editing = false, picked = null;                    // picked: {note} or {action}
+const noteName = (n) => NAMES[n % 12] + (Math.floor(n / 12) - 1);
+function setEditStatus(t) { $("#keyEditStatus").textContent = t; }
+function setPick(p) {
+  picked = p;
+  keysEl.querySelectorAll(".pick").forEach((k) => k.classList.remove("pick"));
+  document.querySelectorAll(".bind").forEach((b) => b.classList.remove("waiting"));
+  if (p?.note != null) {
+    keyEl(p.note)?.classList.add("pick");
+    const cur = Object.entries(keymap.notes).filter(([, o]) => o === p.note - base).map(([c]) => labelOf(c));
+    setEditStatus(`${noteName(p.note)}: press a key for it${cur.length ? ` (now ${cur.join(", ")})` : ""}. Backspace removes it, Esc stops.`);
+  } else if (p?.action) {
+    const b = document.querySelector(`.bind[data-action="${p.action}"]`); b.classList.add("waiting"); b.textContent = "Press a key";
+    setEditStatus("Press the key to use. Esc cancels.");
+  } else setEditStatus("Click a note on the piano, then press the computer key you want for it. Backspace removes its key, Esc stops.");
+  relabel();
+}
+function setEditing(on) {
+  editing = on;
+  $("#keyEdit").hidden = !on;
+  $("#editKeys").setAttribute("aria-pressed", String(on));
+  $("#layoutSel").value = keymap.layout in LABEL_SETS ? keymap.layout : "azerty";
+  setPick(null);
+}
+function unbind(code) {
+  delete keymap.notes[code];
+  for (const a of ["octDown", "octUp", "pedal"]) if (keymap[a] === code) keymap[a] = "";
+}
+// Returns true when the key press was used by Edit keys mode.
+function editKey(e) {
+  if (!editing || !picked) return false;
+  if (["ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight", "AltLeft", "AltRight", "ControlLeft", "ControlRight", "CapsLock", "Tab"].includes(e.code)) return false;
+  e.preventDefault();
+  if (e.key === "Escape") { setPick(null); return true; }
+  if (picked.note != null && (e.key === "Backspace" || e.key === "Delete")) {
+    for (const [c, o] of Object.entries(keymap.notes)) if (o === picked.note - base) delete keymap.notes[c];
+    keymap.layout = "custom"; saveKeymap(); setPick(picked); return true;
+  }
+  const label = e.key && e.key.length === 1 && e.key !== " " ? e.key.toUpperCase() : prettyCode(e.code);
+  const was = keymap.notes[e.code] != null ? noteName(base + keymap.notes[e.code])
+            : ["octDown", "octUp", "pedal"].find((a) => keymap[a] === e.code);
+  unbind(e.code);
+  keymap.labels[e.code] = label;
+  keymap.layout = "custom";
+  if (picked.action) {
+    keymap[picked.action] = e.code;
+    saveKeymap(); toast(`${label} is now ${{ octDown: "octave down", octUp: "octave up", pedal: "the pedal" }[picked.action]}`); setPick(null);
+  } else {
+    for (const [c, o] of Object.entries(keymap.notes)) if (o === picked.note - base) delete keymap.notes[c];   // one key per note
+    keymap.notes[e.code] = picked.note - base;
+    saveKeymap();
+    toast(`${label} plays ${noteName(picked.note)}` + (was ? ` (was ${typeof was === "string" && /\d$/.test(was) ? was : "a control"})` : ""));
+    const next = picked.note + 1;
+    setPick(keyEl(next) ? { note: next } : null);        // move on, so a whole row maps in one pass
+  }
+  return true;
+}
+$("#editKeys").addEventListener("click", () => setEditing(!editing));
+$("#doneKeys").addEventListener("click", () => setEditing(false));
+$("#clearKeys").addEventListener("click", () => { keymap.notes = {}; keymap.layout = "custom"; saveKeymap(); setPick(null); toast("All note keys cleared"); });
+$("#resetKeys").addEventListener("click", () => { keymap = defaultKeymap($("#layoutSel").value); saveKeymap(); setPick(null); toast(`Back to the ${$("#layoutSel").selectedOptions[0].textContent} layout`); });
+$("#layoutSel").addEventListener("change", (e) => { keymap = defaultKeymap(e.target.value); saveKeymap(); setPick(null); e.target.blur(); toast(`${e.target.selectedOptions[0].textContent} layout`); });
+document.querySelectorAll(".bind").forEach((b) => b.addEventListener("click", () => { b.blur(); setPick({ action: b.dataset.action }); }));
 
 function buildKeys() {
   // As many white keys as fit: about C4-G5 on a phone (a full set of tubular bells), four octaves on a laptop.
@@ -1075,6 +1177,7 @@ function buildKeys() {
     }
   });
   for (const n of down.keys()) keyEl(n)?.classList.add("down");
+  if (picked?.note != null) keyEl(picked.note)?.classList.add("pick");
   const name = (n) => NAMES[n % 12] + (Math.floor(n / 12) - 1);
   $("#range").textContent = name(base) + "\u2013" + name(top);
   store.set("base", base);
@@ -1105,6 +1208,7 @@ function velocityFromPointer(e, el) {
 keysEl.addEventListener("pointerdown", (e) => {
   const k = e.target.closest("[data-note]"); if (!k) return;
   e.preventDefault(); keysEl.setPointerCapture(e.pointerId);
+  if (editing) setPick({ note: +k.dataset.note });
   press("p" + e.pointerId, +k.dataset.note, velocityFromPointer(e, k));
 });
 keysEl.addEventListener("pointermove", (e) => {
@@ -1124,17 +1228,18 @@ function setPedal(v) {
 const typing = (e) => e.target.closest?.("select, input, textarea");
 window.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey || typing(e)) return;
+  if (editKey(e)) return;
   const k = e.code;
-  if (k === "Space") { e.preventDefault(); if (!e.repeat) setPedal(true); return; }
-  if (e.repeat) { if (k in COMPUTER) e.preventDefault(); return; }
-  if (k === OCT_DOWN) { shiftOctave(-1); return; }
-  if (k === OCT_UP) { shiftOctave(1); return; }
-  if (k in COMPUTER) { e.preventDefault(); press("k" + k, base + COMPUTER[k], 0.78); }
-});
+  if (k === keymap.pedal) { e.preventDefault(); if (!e.repeat) setPedal(true); return; }
+  if (e.repeat) { if (k in keymap.notes) e.preventDefault(); return; }
+  if (k === keymap.octDown) { e.preventDefault(); shiftOctave(-1); return; }
+  if (k === keymap.octUp) { e.preventDefault(); shiftOctave(1); return; }
+  if (k in keymap.notes) { e.preventDefault(); press("k" + k, base + keymap.notes[k], 0.78); }
+}, true);
 window.addEventListener("keyup", (e) => {
   const k = e.code;
-  if (k === "Space") { e.preventDefault(); setPedal(false); return; }
-  if (k in COMPUTER) release("k" + k);
+  if (k === keymap.pedal) { e.preventDefault(); setPedal(false); return; }
+  if (k in keymap.notes) release("k" + k);
 });
 window.addEventListener("blur", () => { for (const s of [...held.keys()]) release(s); setPedal(false); });
 function shiftOctave(d) { base += 12 * d; buildKeys(); }
