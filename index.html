@@ -922,7 +922,10 @@ function magDb(st, f, fs) {
 const eqCanvas = $("#eqCanvas");
 const EQ_DB = 18;
 let eqHover = -1, eqDrag = -1, spectrum = null;
-const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+let cssCache = {};
+const css = (name) => (cssCache[name] ??= getComputedStyle(document.documentElement).getPropertyValue(name).trim());
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { cssCache = {}; drawEq(); });
+new MutationObserver(() => { cssCache = {}; drawEq(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 const fx = (f, w) => (w * Math.log(f / 20)) / Math.log(1000);
 const xf = (x, w) => 20 * Math.pow(1000, x / w);
 const dy = (d, h) => (h / 2) * (1 - d / EQ_DB);
@@ -1080,10 +1083,10 @@ const keyEl = (n) => keysEl.querySelector(`[data-note="${n}"]`);
 
 function press(source, note, velocity) {
   release(source);
+  send({ type: "on", note, velocity });            // sound first, screen second
   held.set(source, note);
   down.set(note, (down.get(note) || 0) + 1);
   keyEl(note)?.classList.add("down");
-  send({ type: "on", note, velocity });
 }
 function release(source) {
   const note = held.get(source);
@@ -1157,9 +1160,20 @@ async function initMidi() {
     access.onstatechange = update; update();
   } catch { text.textContent = window.self !== window.top ? "MIDI blocked in this frame" : "MIDI not allowed: check site settings"; }
 }
-function onMidi({ data }) {
+let midiDelays = [];
+function onMidi({ data, timeStamp }) {
   const [st, d1, d2 = 0] = data, cmd = st & 0xf0;
-  if (cmd === 0x90 && d2 > 0) press("m" + d1, d1, d2 / 127);
+  if (cmd === 0x90 && d2 > 0) {
+    press("m" + d1, d1, d2 / 127);
+    // how long Chrome took to hand this note to the page (the audio output delay comes on top, for every input)
+    const ms = performance.now() - timeStamp;
+    if (ms >= 0 && ms < 1000) {
+      midiDelays = [...midiDelays.slice(-19), ms];
+      const avg = midiDelays.reduce((a, b) => a + b, 0) / midiDelays.length;
+      $("#midiChip").title = `MIDI delivery: last note ${ms.toFixed(1)} ms, average ${avg.toFixed(1)} ms over ${midiDelays.length} notes.` +
+        (ctx ? ` Audio output adds about ${Math.round(((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000)} ms for every input.` : "");
+    }
+  }
   else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) release("m" + d1);
   else if (cmd === 0xb0 && d1 === 64) setPedal(d2 >= 64);
   else if (cmd === 0xb0 && d1 === 120) send({ type: "panic" });
